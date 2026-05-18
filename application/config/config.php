@@ -52,9 +52,16 @@ define('URL', URL_PROTOCOL . URL_DOMAIN . URL_SUB_FOLDER);
  * Configuration for: Database
  * This is the place where you define your database credentials, database type etc.
  */
+// define('DB_TYPE', 'mysql');
+// define('DB_HOST', '127.0.0.1');
+// define('DB_NAME', 'vehicle_operations');
+// define('DB_USER', 'root');
+// define('DB_PASS', 'your_password');
+// define('DB_CHARSET', 'utf8');
+
 define('DB_TYPE', 'mysql');
-define('DB_HOST', '127.0.0.1');
+define('DB_HOST', 'mysql-db.cnltbg2tkrfl.eu-central-1.rds.amazonaws.com');
 define('DB_NAME', 'vehicle_operations');
-define('DB_USER', 'root');
-define('DB_PASS', 'your_password');
+define('DB_USER', 'php.apps');
+define('DB_PASS', 'P|-|p.@|>1>5');
 define('DB_CHARSET', 'utf8');
