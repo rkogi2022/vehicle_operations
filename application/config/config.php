@@ -61,7 +61,7 @@ define('URL', URL_PROTOCOL . URL_DOMAIN . URL_SUB_FOLDER);
 
 define('DB_TYPE', 'mysql');
 define('DB_HOST', 'mysql-db.cnltbg2tkrfl.eu-central-1.rds.amazonaws.com');
-define('DB_NAME', 'vehicle_operations');
+define('DB_NAME', 'vehicle_request');
 define('DB_USER', 'php.apps');
 define('DB_PASS', 'P|-|p.@|>1>5');
 define('DB_CHARSET', 'utf8');
