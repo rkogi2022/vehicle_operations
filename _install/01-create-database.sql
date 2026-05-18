@@ -1,1 +1,1 @@
-CREATE DATABASE IF NOT EXISTS `vehicle_operations`;
+CREATE DATABASE IF NOT EXISTS `vehicle_request`;

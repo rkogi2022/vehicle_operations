@@ -148,9 +148,9 @@ function isActive($pages, $current) {
                     <div class="dropdown-divider"></div>
                     
                     <!-- Test Requests (Legacy) -->
-                    <a href="<?php echo URL; ?>trip/myrequests" class="dropdown-item">
+                    <!-- <a href="<?php echo URL; ?>trip/myrequests" class="dropdown-item">
                         <i class="fas fa-flask"></i> Test Requests
-                    </a>
+                    </a> -->
                 </div>
             </div>
             
