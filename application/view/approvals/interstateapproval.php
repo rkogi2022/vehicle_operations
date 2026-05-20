@@ -271,10 +271,9 @@
                         <select name="driver_id" class="form-select form-select-sm mb-3" required>
                             <option value="">— Select Driver —</option>
                             <?php foreach ($availableDrivers as $driver):
-                                $driverId    = is_object($driver) ? $driver->id    : $driver['id'];
-                                $driverEmail = is_object($driver) ? $driver->email : $driver['email'];
+                                $driverId   = is_object($driver) ? $driver->id    : $driver['id'];
+                                $driverName = is_object($driver) ? ($driver->name ?? $driver->driver_name ?? '') : ($driver['name'] ?? $driver['driver_name'] ?? '');
                                 $driverPhone = is_object($driver) ? ($driver->phone ?? '') : ($driver['phone'] ?? '');
-                                $driverName  = is_object($driver) ? ($driver->driver_name ?? explode('@', $driverEmail)[0]) : ($driver['driver_name'] ?? explode('@', $driverEmail)[0]);
                             ?>
                                 <option value="<?= $driverId ?>">
                                     <?= htmlspecialchars($driverName) ?> — <?= htmlspecialchars($driverPhone) ?>
@@ -295,9 +294,8 @@
                                 <option value="">— Select Return Driver —</option>
                                 <?php foreach ($availableDrivers as $driver):
                                     $driverId    = is_object($driver) ? $driver->id    : $driver['id'];
-                                    $driverEmail = is_object($driver) ? $driver->email : $driver['email'];
+                                    $driverName  = is_object($driver) ? ($driver->name ?? $driver->driver_name ?? '') : ($driver['name'] ?? $driver['driver_name'] ?? '');
                                     $driverPhone = is_object($driver) ? ($driver->phone ?? '') : ($driver['phone'] ?? '');
-                                    $driverName  = is_object($driver) ? ($driver->driver_name ?? explode('@', $driverEmail)[0]) : ($driver['driver_name'] ?? explode('@', $driverEmail)[0]);
                                 ?>
                                     <option value="<?= $driverId ?>">
                                         <?= htmlspecialchars($driverName) ?> — <?= htmlspecialchars($driverPhone) ?>

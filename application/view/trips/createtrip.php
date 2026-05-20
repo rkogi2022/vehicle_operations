@@ -86,7 +86,7 @@
                             <option value="">Select Supervisor</option>
                             <?php if (!empty($supervisors)): ?>
                                 <?php foreach ($supervisors as $supervisor): ?>
-                                    <option value="<?= $supervisor->id ?>"><?= htmlspecialchars($supervisor->email) ?> (<?= htmlspecialchars($supervisor->role) ?>)</option>
+                                    <option value="<?= $supervisor->id ?>"><?= htmlspecialchars(ucwords(str_replace(['.','_','-'],' ', explode('@',$supervisor->email)[0]))) ?> &mdash; <?= htmlspecialchars($supervisor->email) ?></option>
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <option value="" disabled>No supervisors available</option>

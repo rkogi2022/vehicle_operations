@@ -35,7 +35,7 @@
             <table id="driversTable" class="table table-striped">
                 <thead>
                     <tr>
-                        <th>Driver Name</th>
+                        <th>Name</th>
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Created At</th>
@@ -47,16 +47,16 @@
                     <?php foreach ($drivers as $driver): ?>
                         <tr>
                             <td>
-                                <strong><?= htmlspecialchars($driver->driver_name); ?></strong>
+                                <strong><?= htmlspecialchars($driver->name); ?></strong>
                             </td>
-                            <td><?= htmlspecialchars($driver->email); ?></td>
+                            <td><?= htmlspecialchars($driver->email ?? '—'); ?></td>
                             <td><?= htmlspecialchars($driver->phone); ?></td>
                             <td><?= date('M d, Y', strtotime($driver->created_at)); ?></td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary" onclick="openDriverModal('edit', <?= $driver->id ?>, '<?= htmlspecialchars($driver->email, ENT_QUOTES) ?>', '<?= htmlspecialchars($driver->phone, ENT_QUOTES) ?>')">
+                                <button class="btn btn-sm btn-outline-primary" onclick="openDriverModal('edit', <?= $driver->id ?>, '<?= htmlspecialchars($driver->name, ENT_QUOTES) ?>', '<?= htmlspecialchars($driver->email ?? '', ENT_QUOTES) ?>', '<?= htmlspecialchars($driver->phone, ENT_QUOTES) ?>')">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="confirmDelete(<?= $driver->id ?>, '<?= htmlspecialchars($driver->driver_name, ENT_QUOTES) ?>')">
+                                <button class="btn btn-sm btn-outline-danger" onclick="confirmDelete(<?= $driver->id ?>, '<?= htmlspecialchars($driver->name, ENT_QUOTES) ?>')">
                                     <i class="fas fa-trash"></i> Delete
                                 </button>
                             </td>
@@ -85,14 +85,18 @@
                 <div class="modal-body">
                     <input type="hidden" name="id" id="driver_id">
                     <div class="mb-3">
-                        <label for="driver_email" class="form-label">Email <span class="text-danger">*</span></label>
-                        <input type="email" name="email" id="driver_email" class="form-control" required 
+                        <label for="driver_name" class="form-label">Full Name <span class="text-danger">*</span></label>
+                        <input type="text" name="name" id="driver_name" class="form-control" required
+                               placeholder="e.g., John Doe">
+                    </div>
+                    <div class="mb-3">
+                        <label for="driver_email" class="form-label">Email</label>
+                        <input type="email" name="email" id="driver_email" class="form-control"
                                placeholder="e.g., john.doe@example.com">
-                        <small class="text-muted">Driver name will be extracted from email (before @).</small>
                     </div>
                     <div class="mb-3">
                         <label for="driver_phone" class="form-label">Phone Number <span class="text-danger">*</span></label>
-                        <input type="tel" name="phone" id="driver_phone" class="form-control" required 
+                        <input type="tel" name="phone" id="driver_phone" class="form-control" required
                                placeholder="e.g., +254712345678">
                         <small class="text-muted">Enter phone number with country code.</small>
                     </div>
@@ -161,22 +165,23 @@ document.addEventListener("DOMContentLoaded", function () {
     const driverForm = document.getElementById('driver-form');
     if (driverForm) {
         driverForm.addEventListener('submit', function(e) {
+            const name  = document.getElementById('driver_name').value.trim();
             const email = document.getElementById('driver_email').value.trim();
             const phone = document.getElementById('driver_phone').value.trim();
-            const id = document.getElementById('driver_id').value;
-            
-            if (email === '') {
+            const id    = document.getElementById('driver_id').value;
+
+            if (name === '') {
                 e.preventDefault();
-                alert('Email is required');
+                alert('Full name is required');
                 return false;
             }
-            
-            if (!validateEmail(email)) {
+
+            if (email !== '' && !validateEmail(email)) {
                 e.preventDefault();
                 alert('Please enter a valid email address');
                 return false;
             }
-            
+
             if (phone === '') {
                 e.preventDefault();
                 alert('Phone number is required');
@@ -200,24 +205,27 @@ function validateEmail(email) {
 }
 
 // Driver Functions
-function openDriverModal(action, id = null, email = '', phone = '') {
+function openDriverModal(action, id = null, name = '', email = '', phone = '') {
     const modalTitle = document.getElementById('driverModalLabel');
-    const driverId = document.getElementById('driver_id');
+    const driverId    = document.getElementById('driver_id');
+    const driverName  = document.getElementById('driver_name');
     const driverEmail = document.getElementById('driver_email');
     const driverPhone = document.getElementById('driver_phone');
-    
+
     if (action === 'add') {
         modalTitle.textContent = 'Add Driver';
-        driverId.value = '';
+        driverId.value    = '';
+        driverName.value  = '';
         driverEmail.value = '';
         driverPhone.value = '';
     } else {
         modalTitle.textContent = 'Edit Driver';
-        driverId.value = id;
+        driverId.value    = id;
+        driverName.value  = name;
         driverEmail.value = email;
         driverPhone.value = phone;
     }
-    
+
     driverModal.show();
 }
 

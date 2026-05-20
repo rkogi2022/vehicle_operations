@@ -271,18 +271,10 @@
                                         <form method="POST" action="<?= URL ?>intrastate/assignDriver/<?= $tripId ?>" class="d-flex gap-2" onsubmit="return confirmAssignment(event, this)">
                                             <select name="driver_id" class="driver-select form-select" required>
                                                 <option value="">-- Select Driver --</option>
-                                                <?php foreach ($availableDrivers as $driver): 
-                                                    if (is_object($driver)) {
-                                                        $driverId = $driver->id;
-                                                        $driverEmail = $driver->email ?? 'N/A';
-                                                        $driverPhone = $driver->phone ?? 'N/A';
-                                                        $driverName = $driver->driver_name ?? explode('@', $driverEmail)[0];
-                                                    } else {
-                                                        $driverId = $driver['id'] ?? 0;
-                                                        $driverEmail = $driver['email'] ?? 'N/A';
-                                                        $driverPhone = $driver['phone'] ?? 'N/A';
-                                                        $driverName = $driver['driver_name'] ?? explode('@', $driverEmail)[0];
-                                                    }
+                                                <?php foreach ($availableDrivers as $driver):
+                                                    $driverId    = is_object($driver) ? $driver->id    : ($driver['id'] ?? 0);
+                                                    $driverName  = is_object($driver) ? ($driver->name ?? $driver->driver_name ?? '') : ($driver['name'] ?? $driver['driver_name'] ?? '');
+                                                    $driverPhone = is_object($driver) ? ($driver->phone ?? '') : ($driver['phone'] ?? '');
                                                 ?>
                                                     <option value="<?= $driverId ?>">
                                                         <?= htmlspecialchars($driverName) ?> - <?= htmlspecialchars($driverPhone) ?>

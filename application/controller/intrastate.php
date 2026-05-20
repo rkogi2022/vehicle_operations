@@ -41,12 +41,16 @@ class intrastate extends Controller
         $user_email = $_SESSION['user_email'];
 
         $intrastate = $this->model->getIntrastateRequestsByStaff($user_email);
-        foreach ($intrastate as $r) { $r->request_type = 'intrastate'; }
+        foreach ($intrastate as $r) { $r->request_type = 'intrastate'; $r->is_passenger = false; }
 
         $interstate = $this->model->getInterstateRequestsByStaff($user_email);
-        foreach ($interstate as $r) { $r->request_type = 'interstate'; }
+        foreach ($interstate as $r) { $r->request_type = 'interstate'; $r->is_passenger = false; }
 
-        $requests = array_merge($intrastate, $interstate);
+        // Trips booked on behalf of this user by someone else
+        $passengerTrips = $this->model->getIntrastateRequestsAsPassenger($user_email);
+        foreach ($passengerTrips as $r) { $r->request_type = 'intrastate'; $r->is_passenger = true; }
+
+        $requests = array_merge($intrastate, $interstate, $passengerTrips);
         usort($requests, fn($a, $b) => strtotime($b->created_at) - strtotime($a->created_at));
 
         require APP . 'view/_templates/header.php';
@@ -159,6 +163,46 @@ class intrastate extends Controller
     }
     
     /**
+     * Edit an intrastate request (allowed only before supervisor approves)
+     */
+    public function edit($id)
+    {
+        $this->requireLogin();
+
+        $request = $this->model->getIntrastateRequestById($id);
+
+        if (!$request) {
+            $_SESSION['error'] = "Request not found";
+            header('Location: ' . URL . 'intrastate/myrequests');
+            exit();
+        }
+
+        if ($request->staff_email != $_SESSION['user_email']) {
+            $_SESSION['error'] = "You cannot edit this request";
+            header('Location: ' . URL . 'intrastate/myrequests');
+            exit();
+        }
+
+        $canEdit = ($request->status == 'draft') ||
+                   ($request->status == 'pending' && $request->current_approval_level == 'reviewer');
+
+        if (!$canEdit) {
+            $_SESSION['error'] = "This request cannot be edited — it has already been approved by your supervisor.";
+            header('Location: ' . URL . 'intrastate/myrequests');
+            exit();
+        }
+
+        $eaStates        = $this->model->getAllEaStatesForDropdown();
+        $supervisors     = $this->model->getAdminSupervisorEmails();
+        $funderCodes     = $this->model->getAllFunderCodesForDropdown();
+        $overtimeManagers = $this->model->getAdminSupervisorEmails();
+        $allStaff        = $this->model->getAllStaffEmails();
+
+        require APP . 'view/_templates/header.php';
+        require APP . 'view/trips/intrastate_request.php';
+    }
+
+    /**
      * Display form to create new intrastate request
      */
     public function create()
@@ -168,11 +212,12 @@ class intrastate extends Controller
         $user_profile = $this->model->getUserProfileByEmail($user_email);
         
         // Get dropdown data
-        $eaStates = $this->model->getAllEaStatesForDropdown();
-        $supervisors = $this->model->getAdminSupervisorEmails();
-        $funderCodes = $this->model->getAllFunderCodesForDropdown();
+        $eaStates        = $this->model->getAllEaStatesForDropdown();
+        $supervisors     = $this->model->getAdminSupervisorEmails();
+        $funderCodes     = $this->model->getAllFunderCodesForDropdown();
         $overtimeManagers = $this->model->getAdminSupervisorEmails();
-        
+        $allStaff        = $this->model->getAllStaffEmails();
+
         require APP . 'view/_templates/header.php';
         require APP . 'view/trips/intrastate_request.php';
     }
@@ -191,17 +236,21 @@ class intrastate extends Controller
             // Get vehicle location state and auto-populate approvers
             $vehicle_location_state_id = $_POST['vehicle_location_state_id'];
             $eaStateConfig = $this->model->getEaStateConfigByStateId($vehicle_location_state_id);
-            
+
+            // Fall back to country-level default approvers
+            if (!$eaStateConfig) {
+                $eaStateConfig = $this->model->getCountryDefaultApprovers($_SESSION['country_id'] ?? 0);
+            }
+
             if (!$eaStateConfig && $action == 'submit') {
-                $_SESSION['error'] = "Selected state is not configured. Please contact administrator.";
+                $_SESSION['error'] = "No approver configuration found for this state. Please contact administrator.";
                 header('Location: ' . URL . 'intrastate/create');
                 exit();
             }
             
-            // Calculate total nights
-            $trip_date = $_POST['trip_date'];
-            $return_date = $_POST['return_date'];
-            $total_nights = $this->model->calculateTotalNights($trip_date, $return_date);
+            $trip_date    = $_POST['trip_date'];
+            $return_date  = null;
+            $total_nights = 0;
             
             // Prepare data
             $data = [
@@ -231,36 +280,77 @@ class intrastate extends Controller
                 'id' => $_POST['id'] ?? null
             ];
             
+            $existingId = !empty($_POST['id']) ? (int)$_POST['id'] : null;
+            $existingStatus = $_POST['status'] ?? null;
+
             if ($action == 'draft') {
-                if (!empty($_POST['id'])) {
-                    $result = $this->model->updateIntrastateRequest($_POST['id'], $data);
+                if ($existingId) {
+                    $result = $this->model->updateIntrastateRequest($existingId, $data);
                 } else {
                     $result = $this->model->saveIntrastateRequestDraft($data);
                 }
                 $message = "Draft saved successfully";
-                
+
                 if ($result) {
                     $_SESSION['success'] = $message;
                 } else {
                     $_SESSION['error'] = "Failed to save draft";
                 }
-                
+
+                header('Location: ' . URL . 'intrastate/myrequests');
+                exit();
+            } elseif ($existingId && $existingStatus == 'pending') {
+                // Re-submit an already-pending trip (supervisor hasn't approved yet)
+                $result = $this->model->updatePendingIntrastateRequest($existingId, $data);
+
+                if ($result) {
+                    $request = $this->model->getIntrastateRequestById($existingId);
+                    if ($request && $request->supervisor_email) {
+                        $this->sendSupervisorApprovalEmail($request, true);
+                    }
+                    $_SESSION['success'] = "Request updated. Your supervisor has been notified of the changes.";
+                } else {
+                    $_SESSION['error'] = "Failed to update request. It may have already been approved.";
+                }
+
                 header('Location: ' . URL . 'intrastate/myrequests');
                 exit();
             } else {
+                // Guard against double-submit (same staff + date + destination within 60s)
+                if ($this->model->isDuplicateIntrastateRequest($user_email, $data['trip_date'], $data['trip_destination'])) {
+                    $_SESSION['error'] = "A duplicate request was detected. Please check your existing requests before submitting again.";
+                    header('Location: ' . URL . 'intrastate/myrequests');
+                    exit();
+                }
+
                 // Submit for approval - create request and send email to supervisor
                 $requestId = $this->model->createIntrastateRequest($data);
-                
+
                 if ($requestId) {
                     // Get the created request
                     $request = $this->model->getIntrastateRequestById($requestId);
-                    
+
                     // Send email to supervisor
                     if ($request && $request->supervisor_email) {
                         $this->sendSupervisorApprovalEmail($request);
                     }
-                    
-                    $_SESSION['success'] = "Request submitted successfully. Your supervisor has been notified.";
+
+                    // Save and notify passengers
+                    $rawPassengers = $_POST['passenger_emails'] ?? [];
+                    $passengerEmails = array_values(array_unique(array_filter(
+                        array_map('trim', $rawPassengers),
+                        fn($e) => !empty($e) && $e !== $user_email
+                    )));
+                    if (!empty($passengerEmails) && $request) {
+                        $this->model->addTripPassengers($requestId, $passengerEmails, $user_email);
+                        foreach ($passengerEmails as $passengerEmail) {
+                            $this->sendPassengerNotificationEmail($request, $passengerEmail, $user_email);
+                        }
+                    }
+
+                    $passengerCount = count($passengerEmails);
+                    $_SESSION['success'] = "Request submitted successfully. Your supervisor has been notified."
+                        . ($passengerCount > 0 ? " {$passengerCount} passenger(s) have been notified." : '');
                 } else {
                     $_SESSION['error'] = "Failed to submit request";
                 }
@@ -289,15 +379,21 @@ class intrastate extends Controller
             return;
         }
         
-        // Verify token
+        // Verify token (48-hour window)
         if (!$token || !$level || !$this->verifyApprovalToken($id, $level, $token)) {
-            $this->showErrorPage("Invalid or expired approval link.");
-            return;
+            if (isset($_SESSION['user_email'])) {
+                $_SESSION['info'] = "The approval link has expired. Please use the approval page below.";
+                header('Location: ' . URL . 'intrastate/pendingApprovals');
+            } else {
+                $_SESSION['expired_redirect'] = URL . 'intrastate/pendingApprovals';
+                header('Location: ' . URL . 'login?msg=link_expired');
+            }
+            exit();
         }
-        
+
         $current_level = $request->current_approval_level;
         $action_taken = false;
-        
+
         // Process based on current level
         if ($current_level == 'reviewer' && $level == 'supervisor') {
             $action_taken = $this->processSupervisorApproval($request);
@@ -336,12 +432,18 @@ class intrastate extends Controller
             return;
         }
         
-        // Verify token
+        // Verify token (48-hour window)
         if (!$token || !$level || !$this->verifyApprovalToken($id, $level, $token)) {
-            $this->showErrorPage("Invalid or expired link.");
-            return;
+            if (isset($_SESSION['user_email'])) {
+                $_SESSION['info'] = "The rejection link has expired. Please use the approval page below.";
+                header('Location: ' . URL . 'intrastate/pendingApprovals');
+            } else {
+                $_SESSION['expired_redirect'] = URL . 'intrastate/pendingApprovals';
+                header('Location: ' . URL . 'login?msg=link_expired');
+            }
+            exit();
         }
-        
+
         // If POST request from the form
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $reason = trim($_POST['rejection_reason']);
@@ -371,6 +473,47 @@ class intrastate extends Controller
         $this->showRejectionForm($request);
     }
     
+    /**
+     * Cancel request from web interface (logged-in user)
+     */
+    public function webCancel($id)
+    {
+        $this->requireLogin();
+
+        $request = $this->model->getIntrastateRequestById($id);
+
+        if (!$request) {
+            $_SESSION['error'] = "Request not found";
+            header('Location: ' . URL . 'intrastate/myrequests');
+            exit();
+        }
+
+        if ($request->staff_email != $_SESSION['user_email'] &&
+            $_SESSION['role'] != 'admin' && $_SESSION['role'] != 'super_admin') {
+            $_SESSION['error'] = "You don't have permission to cancel this request";
+            header('Location: ' . URL . 'intrastate/myrequests');
+            exit();
+        }
+
+        if (in_array($request->status, ['completed', 'rejected', 'cancelled'])) {
+            $_SESSION['error'] = "This request cannot be cancelled";
+            header('Location: ' . URL . 'intrastate/myrequests');
+            exit();
+        }
+
+        $result = $this->model->cancelIntrastateRequest($id);
+
+        if ($result) {
+            $this->sendCancellationEmail($request);
+            $_SESSION['success'] = "Request cancelled successfully";
+        } else {
+            $_SESSION['error'] = "Failed to cancel request";
+        }
+
+        header('Location: ' . URL . 'intrastate/myrequests');
+        exit();
+    }
+
     /**
      * Cancel request via email link
      */
@@ -510,9 +653,17 @@ class intrastate extends Controller
         
         $user_email = $_SESSION['user_email'];
         $role = $_SESSION['role'] ?? '';
-        
-        if ($request->staff_email != $user_email && 
-            $role != 'admin' && 
+
+        // Load passengers so we can check if current user is one
+        $passengers = $this->model->getTripPassengers($id);
+        $isPassenger = false;
+        foreach ($passengers as $p) {
+            if ($p->passenger_email === $user_email) { $isPassenger = true; break; }
+        }
+
+        if ($request->staff_email != $user_email &&
+            !$isPassenger &&
+            $role != 'admin' &&
             $role != 'super_admin' &&
             $request->supervisor_email != $user_email &&
             $request->security_manager_email != $user_email &&
@@ -523,13 +674,13 @@ class intrastate extends Controller
             header('Location: ' . URL . 'intrastate/myrequests');
             exit();
         }
-        
+
         $drivers = [];
         $user_roles = [$request->reviewer_email, $request->co_reviewer_email, $request->manager_email];
         if (in_array($user_email, $user_roles) || $role == 'admin' || $role == 'super_admin') {
             $drivers = $this->model->getAllAvailableDrivers();
         }
-        
+
         require APP . 'view/_templates/header.php';
         require APP . 'view/trips/view_intrastate.php';
     }
@@ -782,7 +933,7 @@ class intrastate extends Controller
      */
     private function getTripCompletionEmailTemplate($request, $staffName)
     {
-        $driverName = $request->driver_email ? explode('@', $request->driver_email)[0] : 'N/A';
+        $driverName = $request->driver_name ?? ($request->driver_email ? explode('@', $request->driver_email)[0] : 'N/A');
         
         return '
         <!DOCTYPE html>
@@ -823,21 +974,93 @@ class intrastate extends Controller
     /**
      * Send supervisor approval email
      */
-    private function sendSupervisorApprovalEmail($request)
+    private function sendSupervisorApprovalEmail($request, $isUpdate = false)
     {
         $staffName = explode('@', $request->staff_email)[0];
-        $subject = "Trip Request Approval Required - " . $request->trip_destination;
-        
+        $prefix = $isUpdate ? "[UPDATED] " : "";
+        $subject = $prefix . "Trip Request Approval Required - " . $request->trip_destination;
+
         $approveUrl = URL . "intrastate/approve/" . $request->id . "?token=" . $this->generateApprovalToken($request->id, 'supervisor') . "&level=supervisor";
         $declineUrl = URL . "intrastate/reject/" . $request->id . "?token=" . $this->generateApprovalToken($request->id, 'supervisor') . "&level=supervisor";
-        $cancelUrl = URL . "intrastate/cancel/" . $request->id . "?token=" . $this->generateApprovalToken($request->id, 'cancel');
-        
-        $body = $this->getSupervisorEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl);
-        
+        $cancelUrl  = URL . "intrastate/cancel/" . $request->id . "?token=" . $this->generateApprovalToken($request->id, 'cancel');
+
+        $body = $this->getSupervisorEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl, $isUpdate);
+
         return $this->sendEmail($request->supervisor_email, $subject, $body);
     }
 
     
+    /**
+     * Notify a passenger that a trip has been booked on their behalf
+     */
+    private function sendPassengerNotificationEmail($request, $passengerEmail, $bookedByEmail)
+    {
+        $passengerName = ucwords(str_replace(['.', '_', '-'], ' ', explode('@', $passengerEmail)[0]));
+        $bookedByName  = ucwords(str_replace(['.', '_', '-'], ' ', explode('@', $bookedByEmail)[0]));
+        $viewUrl       = URL . 'intrastate/view/' . $request->id;
+        $subject       = "Trip Booked For You — " . $request->trip_destination . " on " . date('M j, Y', strtotime($request->trip_date));
+
+        $body = $this->getPassengerNotificationEmailTemplate($request, $passengerName, $bookedByEmail, $bookedByName, $viewUrl);
+        return $this->sendEmail($passengerEmail, $subject, $body);
+    }
+
+    /**
+     * Passenger notification email template
+     */
+    private function getPassengerNotificationEmailTemplate($request, $passengerName, $bookedByEmail, $bookedByName, $viewUrl)
+    {
+        return '
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: #0d6efd; color: white; padding: 18px 20px; border-radius: 8px 8px 0 0; text-align: center; }
+                .header h2 { margin: 0; font-size: 20px; }
+                .content { background: #f8f9fa; padding: 24px; border: 1px solid #dee2e6; border-top: none; border-radius: 0 0 8px 8px; }
+                .details { background: white; padding: 16px 20px; margin: 16px 0; border-radius: 8px; border-left: 4px solid #0d6efd; }
+                .details p { margin: 6px 0; }
+                .btn { display: inline-block; padding: 12px 28px; background: #0d6efd; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 12px; }
+                .footer { text-align: center; padding: 14px; font-size: 12px; color: #888; }
+                .note { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 10px 14px; margin-top: 16px; font-size: 13px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>&#9992; Trip Booked For You</h2>
+                </div>
+                <div class="content">
+                    <p>Dear <strong>' . htmlspecialchars($passengerName) . '</strong>,</p>
+                    <p><strong>' . htmlspecialchars($bookedByName) . '</strong> (<em>' . htmlspecialchars($bookedByEmail) . '</em>) has included you as a passenger on the following trip:</p>
+
+                    <div class="details">
+                        <p><strong>Destination:</strong> ' . htmlspecialchars($request->trip_destination) . '</p>
+                        <p><strong>Pickup Location:</strong> ' . htmlspecialchars($request->pickup_location) . '</p>
+                        <p><strong>Trip Date:</strong> ' . date('l, F j, Y', strtotime($request->trip_date)) . '</p>
+                        <p><strong>Arrival Time:</strong> ' . htmlspecialchars($request->trip_destination_time) . '</p>
+                        <p><strong>Purpose:</strong> ' . nl2br(htmlspecialchars($request->purpose)) . '</p>
+                        ' . ($request->route_information ? '<p><strong>Route:</strong> ' . nl2br(htmlspecialchars($request->route_information)) . '</p>' : '') . '
+                    </div>
+
+                    <p>You can track the status of this trip at any time by clicking the button below:</p>
+                    <div style="text-align:center;">
+                        <a href="' . $viewUrl . '" class="btn">Track This Trip</a>
+                    </div>
+
+                    <div class="note">
+                        <strong>Note:</strong> This trip is currently pending approval. You will be notified once a driver has been assigned.
+                    </div>
+                </div>
+                <div class="footer">
+                    <p>This is an automated notification from Vehicle Operations. Please do not reply.</p>
+                </div>
+            </div>
+        </body>
+        </html>';
+    }
+
     /**
      * Send security manager approval email
      */
@@ -951,12 +1174,133 @@ class intrastate extends Controller
     }
     
     /**
-     * Verify approval token
+     * Verify approval token — accepts tokens from the last 48 hours
      */
     private function verifyApprovalToken($requestId, $level, $token)
     {
-        $expectedToken = $this->generateApprovalToken($requestId, $level);
-        return hash_equals($expectedToken, $token);
+        $secret = 'EVIDENCE_ACTION_SECRET_KEY_2024';
+        $today = floor(time() / 86400);
+        for ($i = 0; $i <= 1; $i++) {
+            $payload = $requestId . '|' . $level . '|' . ($today - $i);
+            $expected = hash_hmac('sha256', $payload, $secret);
+            if (hash_equals($expected, $token)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * System-based approval (logged-in supervisor or security manager)
+     */
+    public function systemApprove($id)
+    {
+        $this->requireLogin();
+        $user_email = $_SESSION['user_email'];
+
+        $request = $this->model->getIntrastateRequestById($id);
+        if (!$request) {
+            $_SESSION['error'] = "Request not found.";
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $level = $request->current_approval_level;
+
+        if ($level == 'reviewer' && $request->supervisor_email == $user_email) {
+            $result = $this->processSupervisorApproval($request);
+            $_SESSION[$result ? 'success' : 'error'] = $result
+                ? "Request approved. Security manager has been notified."
+                : "Failed to approve request.";
+        } elseif ($level == 'security_manager' && $request->security_manager_email == $user_email) {
+            $result = $this->processSecurityManagerApproval($request);
+            $_SESSION[$result ? 'success' : 'error'] = $result
+                ? "Request approved. Operations team has been notified."
+                : "Failed to approve request.";
+        } else {
+            $_SESSION['error'] = "You are not authorized to approve this request at its current stage.";
+        }
+
+        header('Location: ' . URL . 'intrastate/pendingApprovals');
+        exit();
+    }
+
+    /**
+     * System-based rejection (logged-in supervisor or security manager)
+     */
+    public function systemReject($id)
+    {
+        $this->requireLogin();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $user_email = $_SESSION['user_email'];
+        $reason = trim($_POST['rejection_reason'] ?? '');
+
+        if (empty($reason)) {
+            $_SESSION['error'] = "Rejection reason is required.";
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $request = $this->model->getIntrastateRequestById($id);
+        if (!$request) {
+            $_SESSION['error'] = "Request not found.";
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $level = $request->current_approval_level;
+        $authorized = ($level == 'reviewer' && $request->supervisor_email == $user_email) ||
+                      ($level == 'security_manager' && $request->security_manager_email == $user_email);
+
+        if (!$authorized) {
+            $_SESSION['error'] = "You are not authorized to reject this request.";
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $db = $this->model->getDb();
+        $stmt = $db->prepare("UPDATE intrastate_request SET status = 'rejected', rejection_reason = ?, rejected_by = ?, rejected_at = NOW() WHERE id = ?");
+        $result = $stmt->execute([$reason, $user_email, $id]);
+
+        if ($result) {
+            $this->sendRejectionEmail($request, $reason, $user_email);
+            $_SESSION['success'] = "Request rejected. The requester has been notified.";
+        } else {
+            $_SESSION['error'] = "Failed to reject request.";
+        }
+
+        header('Location: ' . URL . 'intrastate/pendingApprovals');
+        exit();
+    }
+
+    /**
+     * Pending approvals page — trips awaiting the logged-in user's approval (supervisor or security manager)
+     */
+    public function pendingApprovals()
+    {
+        $this->requireLogin();
+        $user_email = $_SESSION['user_email'];
+
+        $intra_sup = $this->model->getPendingIntrastateForSupervisor($user_email);
+        foreach ($intra_sup as $r) { $r->trip_type = 'intrastate'; $r->approval_role = 'supervisor'; }
+
+        $intra_sec = $this->model->getPendingIntrastateForSecurityManager($user_email);
+        foreach ($intra_sec as $r) { $r->trip_type = 'intrastate'; $r->approval_role = 'security_manager'; }
+
+        $inter_sup = $this->model->getPendingInterstateForSupervisor($user_email);
+        foreach ($inter_sup as $r) { $r->trip_type = 'interstate'; $r->approval_role = 'supervisor'; }
+
+        $inter_sec = $this->model->getPendingInterstateForSecurityManager($user_email);
+        foreach ($inter_sec as $r) { $r->trip_type = 'interstate'; $r->approval_role = 'security_manager'; }
+
+        $pendingApprovals = array_merge($intra_sup, $intra_sec, $inter_sup, $inter_sec);
+        usort($pendingApprovals, fn($a, $b) => strtotime($a->trip_date) - strtotime($b->trip_date));
+
+        require APP . 'view/_templates/header.php';
+        require APP . 'view/approvals/pending_approvals.php';
     }
 
     public function getRequestJson($id)
@@ -1010,8 +1354,11 @@ class intrastate extends Controller
     /**
      * Supervisor email template
      */
-    private function getSupervisorEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl)
+    private function getSupervisorEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl, $isUpdate = false)
     {
+        $headerBg = $isUpdate ? '#e67e22' : '#007bff';
+        $updateBanner = $isUpdate ? '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:10px 14px;margin-bottom:14px;"><strong>&#9888; Note:</strong> This trip request has been <strong>updated</strong> by the requester. Please review the new details before approving.</div>' : '';
+        $actionText = $isUpdate ? 'updated an intrastate trip request' : 'submitted an intrastate trip request';
         return '
         <!DOCTYPE html>
         <html>
@@ -1019,7 +1366,7 @@ class intrastate extends Controller
             <style>
                 body { font-family: Arial, sans-serif; line-height: 1.6; }
                 .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: #007bff; color: white; padding: 15px; text-align: center; border-radius: 5px 5px 0 0; }
+                .header { background: ' . $headerBg . '; color: white; padding: 15px; text-align: center; border-radius: 5px 5px 0 0; }
                 .content { background: #f8f9fa; padding: 20px; border: 1px solid #ddd; border-top: none; }
                 .details { background: white; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #007bff; }
                 .button { display: inline-block; padding: 10px 20px; margin: 10px; text-decoration: none; border-radius: 5px; font-weight: bold; }
@@ -1035,8 +1382,9 @@ class intrastate extends Controller
                     <h2>Intrastate Trip Request Approval Required</h2>
                 </div>
                 <div class="content">
+                    ' . $updateBanner . '
                     <p>Dear Supervisor,</p>
-                    <p>Your supervisee, <strong>' . htmlspecialchars($staffName) . '</strong>, has submitted an intrastate trip request for your approval.</p>
+                    <p>Your supervisee, <strong>' . htmlspecialchars($staffName) . '</strong>, has ' . $actionText . ' for your approval.</p>
                     
                     <div class="details">
                         <h4>Trip Details:</h4>
@@ -1046,8 +1394,6 @@ class intrastate extends Controller
                         <p><strong>Pickup Location:</strong> ' . htmlspecialchars($request->pickup_location) . '</p>
                         <p><strong>Destination:</strong> ' . htmlspecialchars($request->trip_destination) . '</p>
                         <p><strong>Trip Date:</strong> ' . date('F j, Y', strtotime($request->trip_date)) . '</p>
-                        <p><strong>Return Date:</strong> ' . date('F j, Y', strtotime($request->return_date)) . '</p>
-                        <p><strong>Total Nights:</strong> ' . $request->total_nights . '</p>
                         <p><strong>Arrival Time:</strong> ' . $request->trip_destination_time . '</p>
                         ' . ($request->route_information ? '<p><strong>Route:</strong> ' . nl2br(htmlspecialchars($request->route_information)) . '</p>' : '') . '
                         ' . ($request->driver_overtime == 'yes' ? '<p style="color: red;"><strong>⚠ Overtime Required</strong></p>' : '') . '
@@ -1059,7 +1405,7 @@ class intrastate extends Controller
                         <a href="' . $cancelUrl . '" class="button cancel">⟳ CANCEL</a>
                     </div>
                     
-                    <p><small>Click one of the buttons above. Links expire in 24 hours.</small></p>
+                    <p><small>Click one of the buttons above. Links expire in 48 hours. If expired, log in and visit <a href="' . URL . 'intrastate/pendingApprovals">Pending Approvals</a>.</small></p>
                 </div>
                 <div class="footer">
                     <p>This is an automated message. Please do not reply.</p>
@@ -1068,7 +1414,7 @@ class intrastate extends Controller
         </body>
         </html>';
     }
-    
+
     /**
      * Security manager email template
      */
@@ -1107,7 +1453,7 @@ class intrastate extends Controller
                         <p><strong>Purpose:</strong> ' . nl2br(htmlspecialchars($request->purpose)) . '</p>
                         <p><strong>Pickup:</strong> ' . htmlspecialchars($request->pickup_location) . '</p>
                         <p><strong>Destination:</strong> ' . htmlspecialchars($request->trip_destination) . '</p>
-                        <p><strong>Dates:</strong> ' . date('M j', strtotime($request->trip_date)) . ' - ' . date('M j, Y', strtotime($request->return_date)) . '</p>
+                        <p><strong>Trip Date:</strong> ' . date('M j, Y', strtotime($request->trip_date)) . '</p>
                         <p><strong>Route:</strong> ' . ($request->route_information ?: 'Not provided') . '</p>
                         ' . ($request->driver_overtime == 'yes' ? '<p style="color: red;"><strong>⚠ Overtime Required</strong></p>' : '') . '
                     </div>
@@ -1118,7 +1464,7 @@ class intrastate extends Controller
                         <a href="' . $cancelUrl . '" class="button cancel">⟳ CANCEL</a>
                     </div>
                     
-                    <p><small>Click one of the buttons above. Links expire in 24 hours.</small></p>
+                    <p><small>Click one of the buttons above. Links expire in 48 hours. If expired, log in and visit <a href="' . URL . 'intrastate/pendingApprovals">Pending Approvals</a>.</small></p>
                 </div>
                 <div class="footer">
                     <p>This is an automated message. Please do not reply.</p>
@@ -1127,7 +1473,7 @@ class intrastate extends Controller
         </body>
         </html>';
     }
-    
+
     /**
      * Operations team email template
      */
@@ -1165,7 +1511,6 @@ class intrastate extends Controller
                         <p><strong>Pickup:</strong> ' . htmlspecialchars($request->pickup_location) . '</p>
                         <p><strong>Destination:</strong> ' . htmlspecialchars($request->trip_destination) . '</p>
                         <p><strong>Trip Date:</strong> ' . date('F j, Y', strtotime($request->trip_date)) . '</p>
-                        <p><strong>Return Date:</strong> ' . date('F j, Y', strtotime($request->return_date)) . '</p>
                         ' . ($request->driver_overtime == 'yes' ? '<p style="color: red;"><strong>⚠ Overtime Required</strong></p>' : '') . '
                         ' . ($request->need_driver_pickup == 'yes' ? '<p><strong>Driver Pickup Required:</strong> at ' . $request->pickup_time . '</p>' : '') . '
                     </div>
@@ -1267,7 +1612,7 @@ class intrastate extends Controller
      */
     private function getDriverAssignmentEmailTemplate($request, $staffName, $driver)
     {
-        $driverName = $driver ? (property_exists($driver, 'driver_name') ? $driver->driver_name : explode('@', $driver->email)[0]) : 'N/A';
+        $driverName = $driver ? ($driver->name ?? $driver->driver_name ?? explode('@', $driver->email ?? 'unknown@')[0]) : 'N/A';
         
         return '
         <!DOCTYPE html>

@@ -175,8 +175,8 @@
                             <td class="small"><?= htmlspecialchars($trip->funder_code_name ?? '—') ?></td>
                             <td><span class="badge bg-<?= $badgeClass ?>" style="font-size:0.7rem;"><?= $statusLabel ?></span></td>
                             <td class="small">
-                                <?php if ($trip->driver_email ?? null): ?>
-                                    <div><?= htmlspecialchars($trip->driver_name ?? explode('@', $trip->driver_email)[0]) ?></div>
+                                <?php if (($trip->assigned_driver_id ?? null) || ($trip->driver_email ?? null)): ?>
+                                    <div><?= htmlspecialchars($trip->driver_name ?? $trip->driver_email ?? '—') ?></div>
                                     <div class="text-muted" style="font-size:0.72rem;"><?= htmlspecialchars($trip->driver_phone ?? '') ?></div>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>

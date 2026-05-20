@@ -7,12 +7,16 @@ class Login extends Controller
    
     public function index(){
         $error_message = '';
+        $info_message = '';
         if (isset($_GET['error'])) {
             if ($_GET['error'] == 'invalid_credentials') {
                 $error_message = '<div class="error-msg"> Invalid email or password </div>';
             } elseif ($_GET['error'] == 'user_not_found') {
                 $error_message = '<div class="error-msg"> User not found. Please contact administrator. </div>';
             }
+        }
+        if (isset($_GET['msg']) && $_GET['msg'] == 'link_expired') {
+            $info_message = '<div class="alert alert-warning" style="margin:10px 0;padding:10px;border-radius:5px;">The approval link has expired. Please log in and use the <strong>Pending Approvals</strong> page to take action.</div>';
         }
         require APP . 'view/login/index.php';
     }
@@ -79,7 +83,10 @@ class Login extends Controller
             $_SESSION['user'] = ucfirst($user_name);
             
             error_log("Session created, redirecting to home");
-            header('Location:' . URL . 'home/index/');
+            // Redirect to pending approvals page if user followed an expired link
+            $redirectTo = $_SESSION['expired_redirect'] ?? null;
+            unset($_SESSION['expired_redirect']);
+            header('Location:' . ($redirectTo ?: URL . 'home/index/'));
             exit();
         } else {
             error_log("Password verification FAILED for: " . $email);

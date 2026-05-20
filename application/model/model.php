@@ -894,7 +894,7 @@ class Model
     //////driver details functions
     // Get all drivers
     public function getAllDrivers() {
-        $sql = "SELECT *, SUBSTRING_INDEX(email, '@', 1) as driver_name FROM driver ORDER BY email";
+        $sql = "SELECT * FROM driver ORDER BY name";
         $stmt = $this->db->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_OBJ);
@@ -902,7 +902,7 @@ class Model
 
     // Get driver by ID
     public function getDriverById($id) {
-        $sql = "SELECT *, SUBSTRING_INDEX(email, '@', 1) as driver_name FROM driver WHERE id = ?";
+        $sql = "SELECT * FROM driver WHERE id = ?";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$id]);
         return $stmt->fetch(PDO::FETCH_OBJ);
@@ -917,17 +917,17 @@ class Model
     }
 
     // Add new driver
-    public function addDriver($email, $phone) {
-        $sql = "INSERT INTO driver (email, phone) VALUES (?, ?)";
+    public function addDriver($name, $email, $phone) {
+        $sql = "INSERT INTO driver (name, email, phone) VALUES (?, ?, ?)";
         $stmt = $this->db->prepare($sql);
-        return $stmt->execute([$email, $phone]);
+        return $stmt->execute([$name, $email, $phone]);
     }
 
     // Update driver
-    public function updateDriver($id, $email, $phone) {
-        $sql = "UPDATE driver SET email = ?, phone = ? WHERE id = ?";
+    public function updateDriver($id, $name, $email, $phone) {
+        $sql = "UPDATE driver SET name = ?, email = ?, phone = ? WHERE id = ?";
         $stmt = $this->db->prepare($sql);
-        return $stmt->execute([$email, $phone, $id]);
+        return $stmt->execute([$name, $email, $phone, $id]);
     }
 
     // Delete driver
@@ -954,77 +954,100 @@ class Model
 
     // Search drivers by email or phone
     public function searchDrivers($keyword) {
-        $sql = "SELECT *, SUBSTRING_INDEX(email, '@', 1) as driver_name FROM driver WHERE email LIKE ? OR phone LIKE ? ORDER BY email";
+        $sql = "SELECT * FROM driver WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? ORDER BY name";
         $stmt = $this->db->prepare($sql);
         $searchTerm = "%$keyword%";
-        $stmt->execute([$searchTerm, $searchTerm]);
+        $stmt->execute([$searchTerm, $searchTerm, $searchTerm]);
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
     ///////////////EA States functions
 
-    // Get all EA states 
+    // Get all EA states
     public function getAllEaStates() {
-        $sql = "SELECT es.*, 
+        $sql = "SELECT es.*,
                 s.name as state_name, s.code as state_code,
                 c.name as country_name,
-                d.email as driver_email, d.phone as driver_phone,
                 CONCAT(SUBSTRING_INDEX(es.reviewer_email, '@', 1)) as reviewer_name,
                 CONCAT(SUBSTRING_INDEX(es.co_reviewer_email, '@', 1)) as co_reviewer_name,
                 CONCAT(SUBSTRING_INDEX(es.manager_email, '@', 1)) as manager_name,
-                CONCAT(SUBSTRING_INDEX(es.security_manager_email, '@', 1)) as security_manager_name
+                CONCAT(SUBSTRING_INDEX(es.security_manager_email, '@', 1)) as security_manager_name,
+                CONCAT(SUBSTRING_INDEX(IFNULL(es.overtime_manager_email,''), '@', 1)) as overtime_manager_name,
+                GROUP_CONCAT(d.name ORDER BY d.name SEPARATOR '||') as driver_names,
+                GROUP_CONCAT(d.phone ORDER BY d.name SEPARATOR '||') as driver_phones
                 FROM ea_state es
                 JOIN state s ON es.state_id = s.id
                 JOIN country c ON s.country_id = c.id
-                LEFT JOIN driver d ON es.driver_id = d.id
+                LEFT JOIN ea_state_driver esd ON es.id = esd.ea_state_id
+                LEFT JOIN driver d ON esd.driver_id = d.id
+                GROUP BY es.id
                 ORDER BY c.name, s.name";
         $stmt = $this->db->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
-    // Add new EA state 
-    public function addEaState($state_id, $reviewer_email, $co_reviewer_email, $manager_email, 
-                            $security_manager_email = null, $driver_id = null) {
-        $sql = "INSERT INTO ea_state (state_id, reviewer_email, co_reviewer_email, manager_email, 
-                                    security_manager_email, driver_id) 
+    // Add new EA state
+    public function addEaState($state_id, $reviewer_email, $co_reviewer_email, $manager_email,
+                               $security_manager_email = null, $driver_ids = [], $overtime_manager_email = null) {
+        $sql = "INSERT INTO ea_state (state_id, reviewer_email, co_reviewer_email, manager_email,
+                                     security_manager_email, overtime_manager_email)
                 VALUES (?, ?, ?, ?, ?, ?)";
         $stmt = $this->db->prepare($sql);
-        return $stmt->execute([$state_id, $reviewer_email, $co_reviewer_email, $manager_email, 
-                            $security_manager_email, $driver_id]);
+        $stmt->execute([$state_id, $reviewer_email, $co_reviewer_email, $manager_email,
+                        $security_manager_email, $overtime_manager_email]);
+        $ea_state_id = $this->db->lastInsertId();
+        if (!empty($driver_ids)) {
+            $driverStmt = $this->db->prepare("INSERT INTO ea_state_driver (ea_state_id, driver_id) VALUES (?, ?)");
+            foreach ($driver_ids as $driver_id) {
+                if (!empty($driver_id)) $driverStmt->execute([$ea_state_id, $driver_id]);
+            }
+        }
+        return true;
     }
 
-    // Update EA state 
+    // Update EA state
     public function updateEaState($id, $state_id, $reviewer_email, $co_reviewer_email, $manager_email,
-                                $security_manager_email = null, $driver_id = null) {
-        $sql = "UPDATE ea_state SET state_id = ?, reviewer_email = ?, co_reviewer_email = ?, 
-                manager_email = ?, security_manager_email = ?, driver_id = ? 
-                WHERE id = ?";
+                                  $security_manager_email = null, $driver_ids = [], $overtime_manager_email = null) {
+        $sql = "UPDATE ea_state SET state_id = ?, reviewer_email = ?, co_reviewer_email = ?,
+                manager_email = ?, security_manager_email = ?, overtime_manager_email = ? WHERE id = ?";
         $stmt = $this->db->prepare($sql);
-        return $stmt->execute([$state_id, $reviewer_email, $co_reviewer_email, $manager_email,
-                            $security_manager_email, $driver_id, $id]);
+        $stmt->execute([$state_id, $reviewer_email, $co_reviewer_email, $manager_email,
+                        $security_manager_email, $overtime_manager_email, $id]);
+        $this->db->prepare("DELETE FROM ea_state_driver WHERE ea_state_id = ?")->execute([$id]);
+        if (!empty($driver_ids)) {
+            $driverStmt = $this->db->prepare("INSERT INTO ea_state_driver (ea_state_id, driver_id) VALUES (?, ?)");
+            foreach ($driver_ids as $driver_id) {
+                if (!empty($driver_id)) $driverStmt->execute([$id, $driver_id]);
+            }
+        }
+        return true;
     }
 
-
-    // Get EA state by ID (UPDATED with security and operations managers)
+    // Get EA state by ID
     public function getEaStateById($id) {
-        $sql = "SELECT es.*, 
+        $sql = "SELECT es.*,
                 s.name as state_name, s.code as state_code, s.country_id,
                 c.name as country_name,
-                d.email as driver_email, d.phone as driver_phone
+                GROUP_CONCAT(esd.driver_id) as driver_ids_csv
                 FROM ea_state es
                 JOIN state s ON es.state_id = s.id
                 JOIN country c ON s.country_id = c.id
-                LEFT JOIN driver d ON es.driver_id = d.id
-                WHERE es.id = ?";
+                LEFT JOIN ea_state_driver esd ON es.id = esd.ea_state_id
+                WHERE es.id = ?
+                GROUP BY es.id";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$id]);
         return $stmt->fetch(PDO::FETCH_OBJ);
     }
 
-    // Get EA state by state_id (UPDATED with security and operations managers)
+    // Get EA state by state_id
     public function getEaStateByStateId($state_id) {
-        $sql = "SELECT * FROM ea_state WHERE state_id = ?";
+        $sql = "SELECT es.*, GROUP_CONCAT(esd.driver_id) as driver_ids_csv
+                FROM ea_state es
+                LEFT JOIN ea_state_driver esd ON es.id = esd.ea_state_id
+                WHERE es.state_id = ?
+                GROUP BY es.id";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$state_id]);
         return $stmt->fetch(PDO::FETCH_OBJ);
@@ -1032,17 +1055,28 @@ class Model
 
     // Delete EA state
     public function deleteEaState($id) {
-        $sql = "DELETE FROM ea_state WHERE id = ?";
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([$id]);
+        $this->db->prepare("DELETE FROM ea_state_driver WHERE ea_state_id = ?")->execute([$id]);
+        return $this->db->prepare("DELETE FROM ea_state WHERE id = ?")->execute([$id]);
     }
 
     // Get available states (not yet assigned to ea_state)
     public function getAvailableStates() {
-        $sql = "SELECT s.*, c.name as country_name 
+        $sql = "SELECT s.*, c.name as country_name
                 FROM state s
                 JOIN country c ON s.country_id = c.id
                 WHERE s.id NOT IN (SELECT state_id FROM ea_state)
+                ORDER BY c.name, s.name";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Get all states with country name (for edit dropdowns)
+    public function getAllStatesWithCountry() {
+        $sql = "SELECT s.*, c.name as country_name,
+                (SELECT COUNT(*) FROM ea_state WHERE state_id = s.id) as already_configured
+                FROM state s
+                JOIN country c ON s.country_id = c.id
                 ORDER BY c.name, s.name";
         $stmt = $this->db->prepare($sql);
         $stmt->execute();
@@ -1088,9 +1122,9 @@ class Model
 
     // Get all drivers for dropdown
     public function getAllDriversForDropdown() {
-        $sql = "SELECT id, email, phone, SUBSTRING_INDEX(email, '@', 1) as name 
-                FROM driver 
-                ORDER BY email";
+        $sql = "SELECT id, name, email, phone
+                FROM driver
+                ORDER BY name";
         $stmt = $this->db->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_OBJ);
@@ -1126,7 +1160,7 @@ class Model
                 CONCAT(SUBSTRING_INDEX(ir.security_manager_email, '@', 1)) as security_manager_name,
                 CONCAT(SUBSTRING_INDEX(ir.overtime_manager_email, '@', 1)) as overtime_manager_name,
                 d.email as driver_email, d.phone as driver_phone,
-                CONCAT(SUBSTRING_INDEX(d.email, '@', 1)) as driver_name
+                d.name as driver_name
                 FROM intrastate_request ir
                 JOIN state s ON ir.vehicle_location_state_id = s.id
                 JOIN funder_codes fc ON ir.funder_code_id = fc.id
@@ -1149,7 +1183,7 @@ class Model
                 CONCAT(SUBSTRING_INDEX(ir.security_manager_email, '@', 1)) as security_manager_name,
                 CONCAT(SUBSTRING_INDEX(ir.overtime_manager_email, '@', 1)) as overtime_manager_name,
                 d.email as driver_email, d.phone as driver_phone,
-                CONCAT(SUBSTRING_INDEX(d.email, '@', 1)) as driver_name
+                d.name as driver_name
                 FROM intrastate_request ir
                 JOIN state s ON ir.vehicle_location_state_id = s.id
                 JOIN funder_codes fc ON ir.funder_code_id = fc.id
@@ -1186,6 +1220,53 @@ class Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    // Add multiple passengers to an intrastate trip
+    public function addTripPassengers($trip_id, array $emails, $added_by) {
+        $sql = "INSERT IGNORE INTO intrastate_trip_passengers (trip_id, passenger_email, added_by) VALUES (?, ?, ?)";
+        $stmt = $this->db->prepare($sql);
+        foreach ($emails as $email) {
+            $email = trim($email);
+            if (!empty($email)) {
+                $stmt->execute([$trip_id, $email, $added_by]);
+            }
+        }
+        return true;
+    }
+
+    // Get all passengers for a trip
+    public function getTripPassengers($trip_id) {
+        $sql = "SELECT passenger_email, added_by, created_at FROM intrastate_trip_passengers WHERE trip_id = ? ORDER BY passenger_email";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$trip_id]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Get trips where a user is listed as a passenger
+    public function getIntrastateRequestsAsPassenger($staff_email) {
+        $sql = "SELECT ir.*, s.name as vehicle_location_state_name, fc.name as funder_code_name,
+                itp.added_by as booked_by,
+                CASE
+                    WHEN ir.status = 'pending' AND ir.current_approval_level = 'reviewer'         THEN 'Waiting for Reviewer'
+                    WHEN ir.status = 'pending' AND ir.current_approval_level = 'co_reviewer'      THEN 'Waiting for Co-Reviewer'
+                    WHEN ir.status = 'pending' AND ir.current_approval_level = 'manager'          THEN 'Waiting for Manager'
+                    WHEN ir.status = 'pending' AND ir.current_approval_level = 'security_manager' THEN 'Waiting for Security Manager'
+                    WHEN ir.status = 'rejected'          THEN 'Rejected'
+                    WHEN ir.status = 'security_approved' THEN 'Approved - Awaiting Driver Assignment'
+                    WHEN ir.status = 'completed'         THEN 'Completed'
+                    WHEN ir.status = 'cancelled'         THEN 'Cancelled'
+                    ELSE REPLACE(ir.status, '_', ' ')
+                END as approval_status_text
+                FROM intrastate_request ir
+                JOIN intrastate_trip_passengers itp ON ir.id = itp.trip_id
+                JOIN state s ON ir.vehicle_location_state_id = s.id
+                JOIN funder_codes fc ON ir.funder_code_id = fc.id
+                WHERE itp.passenger_email = ?
+                ORDER BY ir.created_at DESC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$staff_email]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
     // Get intrastate requests pending for specific approver
     public function getIntrastateRequestsByApprover($approver_email, $level) {
         $sql = "SELECT ir.*,
@@ -1212,6 +1293,16 @@ class Model
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$level, $approver_email]);
         return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Guard against duplicate intrastate submissions within 60 seconds
+    public function isDuplicateIntrastateRequest($staff_email, $trip_date, $trip_destination) {
+        $sql = "SELECT COUNT(*) as cnt FROM intrastate_request
+                WHERE staff_email = ? AND trip_date = ? AND trip_destination = ?
+                AND created_at >= NOW() - INTERVAL 60 SECOND";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$staff_email, $trip_date, $trip_destination]);
+        return $stmt->fetch(PDO::FETCH_OBJ)->cnt > 0;
     }
 
     // Create new intrastate request
@@ -1353,13 +1444,16 @@ class Model
         return $stmt->execute([$id]);
     }
 
-    // Get EA state configuration by state ID (without operations manager)
+    // Get EA state configuration by state ID
     public function getEaStateConfigByStateId($state_id) {
-        $sql = "SELECT es.*, 
-                d.email as driver_email, d.phone as driver_phone
+        $sql = "SELECT es.*,
+                GROUP_CONCAT(d.name ORDER BY d.name SEPARATOR ', ') as driver_names,
+                GROUP_CONCAT(d.phone ORDER BY d.name SEPARATOR ', ') as driver_phones
                 FROM ea_state es
-                LEFT JOIN driver d ON es.driver_id = d.id
-                WHERE es.state_id = ?";
+                LEFT JOIN ea_state_driver esd ON es.id = esd.ea_state_id
+                LEFT JOIN driver d ON esd.driver_id = d.id
+                WHERE es.state_id = ?
+                GROUP BY es.id";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$state_id]);
         return $stmt->fetch(PDO::FETCH_OBJ);
@@ -1375,6 +1469,52 @@ class Model
         $stmt = $this->db->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Get country-level default approvers (fallback when no EA state config for a state)
+    public function getCountryDefaultApprovers($country_id) {
+        $sql = "SELECT cda.*, c.name as country_name
+                FROM country_default_approvers cda
+                JOIN country c ON cda.country_id = c.id
+                WHERE cda.country_id = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$country_id]);
+        return $stmt->fetch(PDO::FETCH_OBJ);
+    }
+
+    // Get all country default approvers (for admin listing)
+    public function getAllCountryDefaultApprovers() {
+        $sql = "SELECT cda.*, c.name as country_name,
+                CONCAT(SUBSTRING_INDEX(cda.reviewer_email,'@',1)) as reviewer_name,
+                CONCAT(SUBSTRING_INDEX(IFNULL(cda.co_reviewer_email,''),'@',1)) as co_reviewer_name,
+                CONCAT(SUBSTRING_INDEX(cda.manager_email,'@',1)) as manager_name,
+                CONCAT(SUBSTRING_INDEX(IFNULL(cda.security_manager_email,''),'@',1)) as security_manager_name,
+                CONCAT(SUBSTRING_INDEX(IFNULL(cda.overtime_manager_email,''),'@',1)) as overtime_manager_name
+                FROM country_default_approvers cda
+                JOIN country c ON cda.country_id = c.id
+                ORDER BY c.name";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Save (upsert) country default approvers
+    public function saveCountryDefaultApprovers($country_id, $reviewer_email, $co_reviewer_email, $manager_email, $security_manager_email = null, $overtime_manager_email = null) {
+        $existing = $this->getCountryDefaultApprovers($country_id);
+        if ($existing) {
+            $sql = "UPDATE country_default_approvers SET reviewer_email=?, co_reviewer_email=?, manager_email=?, security_manager_email=?, overtime_manager_email=? WHERE country_id=?";
+            $stmt = $this->db->prepare($sql);
+            return $stmt->execute([$reviewer_email, $co_reviewer_email, $manager_email, $security_manager_email, $overtime_manager_email, $country_id]);
+        } else {
+            $sql = "INSERT INTO country_default_approvers (country_id, reviewer_email, co_reviewer_email, manager_email, security_manager_email, overtime_manager_email) VALUES (?, ?, ?, ?, ?, ?)";
+            $stmt = $this->db->prepare($sql);
+            return $stmt->execute([$country_id, $reviewer_email, $co_reviewer_email, $manager_email, $security_manager_email, $overtime_manager_email]);
+        }
+    }
+
+    // Delete country default approvers
+    public function deleteCountryDefaultApprovers($country_id) {
+        return $this->db->prepare("DELETE FROM country_default_approvers WHERE country_id = ?")->execute([$country_id]);
     }
 
     // Get all admin/super_admin emails for supervisor and overtime manager dropdown
@@ -1398,9 +1538,7 @@ class Model
 
     // Get all drivers for dropdown (for security manager assignment - now final approver)
     public function getAllAvailableDrivers() {
-        $sql = "SELECT id, email, phone, SUBSTRING_INDEX(email, '@', 1) as driver_name 
-                FROM driver 
-                ORDER BY email";
+        $sql = "SELECT * FROM driver ORDER BY name";
         $stmt = $this->db->prepare($sql);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_OBJ);
@@ -1569,9 +1707,9 @@ class Model
                 CONCAT(SUBSTRING_INDEX(ir.security_manager_email, '@', 1)) as security_manager_name,
                 CONCAT(SUBSTRING_INDEX(ir.overtime_manager_email, '@', 1)) as overtime_manager_name,
                 d.email as driver_email, d.phone as driver_phone,
-                CONCAT(SUBSTRING_INDEX(d.email, '@', 1)) as driver_name,
+                d.name as driver_name,
                 rd.email as return_driver_email, rd.phone as return_driver_phone,
-                CONCAT(SUBSTRING_INDEX(rd.email, '@', 1)) as return_driver_name,
+                rd.name as return_driver_name,
                 a1.name as requester_departure_airline,
                 a2.name as requester_return_airline,
                 a3.name as operations_departure_airline,
@@ -1613,9 +1751,9 @@ class Model
                 CONCAT(SUBSTRING_INDEX(ir.security_manager_email, '@', 1)) as security_manager_name,
                 CONCAT(SUBSTRING_INDEX(ir.overtime_manager_email, '@', 1)) as overtime_manager_name,
                 d.email as driver_email, d.phone as driver_phone,
-                CONCAT(SUBSTRING_INDEX(d.email, '@', 1)) as driver_name,
+                d.name as driver_name,
                 rd.email as return_driver_email, rd.phone as return_driver_phone,
-                CONCAT(SUBSTRING_INDEX(rd.email, '@', 1)) as return_driver_name,
+                rd.name as return_driver_name,
                 a1.name as requester_departure_airline,
                 a2.name as requester_return_airline,
                 a3.name as operations_departure_airline,
@@ -1767,6 +1905,16 @@ class Model
      * @param array $data Request data array
      * @return int|false Last insert ID on success, false on failure
      */
+    // Guard against duplicate interstate submissions within 60 seconds
+    public function isDuplicateInterstateRequest($staff_email, $trip_date, $trip_destination) {
+        $sql = "SELECT COUNT(*) as cnt FROM interstate_request
+                WHERE staff_email = ? AND trip_date = ? AND trip_destination = ?
+                AND created_at >= NOW() - INTERVAL 60 SECOND";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$staff_email, $trip_date, $trip_destination]);
+        return $stmt->fetch(PDO::FETCH_OBJ)->cnt > 0;
+    }
+
     public function createInterstateRequest($data)
     {
         $sql = "INSERT INTO interstate_request (
@@ -2219,9 +2367,9 @@ class Model
                 ars.name as arrival_state_name,
                 fc.name as funder_code_name,
                 d.email as driver_email, d.phone as driver_phone,
-                CONCAT(SUBSTRING_INDEX(d.email, '@', 1)) as driver_name,
+                d.name as driver_name,
                 rd.email as return_driver_email, rd.phone as return_driver_phone,
-                CONCAT(SUBSTRING_INDEX(rd.email, '@', 1)) as return_driver_name
+                rd.name as return_driver_name
                 FROM interstate_request ir
                 JOIN state vs ON ir.vehicle_location_state_id = vs.id
                 JOIN state ars ON ir.arrival_location_state_id = ars.id
@@ -2460,7 +2608,7 @@ class Model
                 s.name as vehicle_location_state_name, s.code as vehicle_location_code,
                 fc.name as funder_code_name,
                 d.email as driver_email, d.phone as driver_phone,
-                CONCAT(SUBSTRING_INDEX(d.email, '@', 1)) as driver_name
+                d.name as driver_name
                 FROM intrastate_request ir
                 JOIN state s ON ir.vehicle_location_state_id = s.id
                 JOIN funder_codes fc ON ir.funder_code_id = fc.id
@@ -2811,5 +2959,200 @@ class Model
     }
     //////////////////////////////////////////////////////////////////////////////////
 
+    // Update a pending intrastate request (still at reviewer stage, before supervisor approves)
+    public function updatePendingIntrastateRequest($id, $data) {
+        $sql = "UPDATE intrastate_request SET
+                staff_phone = :staff_phone,
+                supervisor_email = :supervisor_email,
+                vehicle_location_state_id = :vehicle_location_state_id,
+                reviewer_email = :reviewer_email,
+                co_reviewer_email = :co_reviewer_email,
+                manager_email = :manager_email,
+                security_manager_email = :security_manager_email,
+                trip_date = :trip_date,
+                purpose = :purpose,
+                pickup_location = :pickup_location,
+                trip_destination = :trip_destination,
+                trip_destination_time = :trip_destination_time,
+                route_information = :route_information,
+                funder_code_id = :funder_code_id,
+                driver_overtime = :driver_overtime,
+                trip_activity = :trip_activity,
+                reason_for_overtime = :reason_for_overtime,
+                overtime_manager_email = :overtime_manager_email,
+                need_driver_pickup = :need_driver_pickup,
+                pickup_time = :pickup_time
+                WHERE id = :id AND status = 'pending' AND current_approval_level = 'reviewer'";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([
+            ':staff_phone'               => $data['staff_phone'],
+            ':supervisor_email'          => $data['supervisor_email'],
+            ':vehicle_location_state_id' => $data['vehicle_location_state_id'],
+            ':reviewer_email'            => $data['reviewer_email'],
+            ':co_reviewer_email'         => $data['co_reviewer_email'],
+            ':manager_email'             => $data['manager_email'],
+            ':security_manager_email'    => $data['security_manager_email'],
+            ':trip_date'                 => $data['trip_date'],
+            ':purpose'                   => $data['purpose'],
+            ':pickup_location'           => $data['pickup_location'],
+            ':trip_destination'          => $data['trip_destination'],
+            ':trip_destination_time'     => $data['trip_destination_time'],
+            ':route_information'         => $data['route_information'],
+            ':funder_code_id'            => $data['funder_code_id'],
+            ':driver_overtime'           => $data['driver_overtime'],
+            ':trip_activity'             => $data['trip_activity'],
+            ':reason_for_overtime'       => $data['reason_for_overtime'],
+            ':overtime_manager_email'    => $data['overtime_manager_email'],
+            ':need_driver_pickup'        => $data['need_driver_pickup'],
+            ':pickup_time'               => $data['pickup_time'],
+            ':id'                        => $id,
+        ]);
+    }
+
+    // Update a pending interstate request (still at reviewer stage, before supervisor approves)
+    public function updatePendingInterstateRequest($id, $data) {
+        $sql = "UPDATE interstate_request SET
+                staff_phone = :staff_phone,
+                supervisor_email = :supervisor_email,
+                vehicle_location_state_id = :vehicle_location_state_id,
+                reviewer_email = :reviewer_email,
+                co_reviewer_email = :co_reviewer_email,
+                manager_email = :manager_email,
+                security_manager_email = :security_manager_email,
+                trip_date = :trip_date,
+                return_date = :return_date,
+                total_nights = :total_nights,
+                purpose = :purpose,
+                arrival_location_state_id = :arrival_location_state_id,
+                destination_city = :destination_city,
+                pickup_location = :pickup_location,
+                trip_destination = :trip_destination,
+                trip_destination_time = :trip_destination_time,
+                route_information = :route_information,
+                mode_of_travel = :mode_of_travel,
+                require_airport_pickup = :require_airport_pickup,
+                airport_pickup_dropoff_destination = :airport_pickup_dropoff_destination,
+                requester_departure_flight_airline_id = :requester_departure_flight_airline_id,
+                requester_return_flight_airline_id = :requester_return_flight_airline_id,
+                require_hotel = :require_hotel,
+                hotel_id = :hotel_id,
+                hotel_other_name = :hotel_other_name,
+                hotel_location = :hotel_location,
+                hotel_location_state_id = :hotel_location_state_id,
+                funder_code_id = :funder_code_id,
+                driver_overtime = :driver_overtime,
+                trip_activity = :trip_activity,
+                reason_for_overtime = :reason_for_overtime,
+                overtime_manager_email = :overtime_manager_email,
+                need_driver_pickup = :need_driver_pickup,
+                pickup_time = :pickup_time
+                WHERE id = :id AND status = 'pending' AND current_approval_level = 'reviewer'";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([
+            ':staff_phone'                            => $data['staff_phone'],
+            ':supervisor_email'                       => $data['supervisor_email'],
+            ':vehicle_location_state_id'              => $data['vehicle_location_state_id'],
+            ':reviewer_email'                         => $data['reviewer_email'],
+            ':co_reviewer_email'                      => $data['co_reviewer_email'],
+            ':manager_email'                          => $data['manager_email'],
+            ':security_manager_email'                 => $data['security_manager_email'],
+            ':trip_date'                              => $data['trip_date'],
+            ':return_date'                            => $data['return_date'],
+            ':total_nights'                           => $data['total_nights'],
+            ':purpose'                                => $data['purpose'],
+            ':arrival_location_state_id'              => $data['arrival_location_state_id'],
+            ':destination_city'                       => $data['destination_city'],
+            ':pickup_location'                        => $data['pickup_location'],
+            ':trip_destination'                       => $data['trip_destination'],
+            ':trip_destination_time'                  => $data['trip_destination_time'],
+            ':route_information'                      => $data['route_information'],
+            ':mode_of_travel'                         => $data['mode_of_travel'],
+            ':require_airport_pickup'                 => $data['require_airport_pickup'],
+            ':airport_pickup_dropoff_destination'     => $data['airport_pickup_dropoff_destination'],
+            ':requester_departure_flight_airline_id'  => $data['requester_departure_flight_airline_id'],
+            ':requester_return_flight_airline_id'     => $data['requester_return_flight_airline_id'],
+            ':require_hotel'                          => $data['require_hotel'],
+            ':hotel_id'                               => $data['hotel_id'],
+            ':hotel_other_name'                       => $data['hotel_other_name'],
+            ':hotel_location'                         => $data['hotel_location'],
+            ':hotel_location_state_id'                => $data['hotel_location_state_id'],
+            ':funder_code_id'                         => $data['funder_code_id'],
+            ':driver_overtime'                        => $data['driver_overtime'],
+            ':trip_activity'                          => $data['trip_activity'],
+            ':reason_for_overtime'                    => $data['reason_for_overtime'],
+            ':overtime_manager_email'                 => $data['overtime_manager_email'],
+            ':need_driver_pickup'                     => $data['need_driver_pickup'],
+            ':pickup_time'                            => $data['pickup_time'],
+            ':id'                                     => $id,
+        ]);
+    }
+
+    // Get intrastate trips pending supervisor approval for a given supervisor
+    public function getPendingIntrastateForSupervisor($supervisor_email) {
+        $sql = "SELECT ir.*,
+                s.name as vehicle_location_state_name,
+                fc.name as funder_code_name
+                FROM intrastate_request ir
+                JOIN state s ON ir.vehicle_location_state_id = s.id
+                JOIN funder_codes fc ON ir.funder_code_id = fc.id
+                WHERE ir.supervisor_email = ?
+                AND ir.status = 'pending' AND ir.current_approval_level = 'reviewer'
+                ORDER BY ir.trip_date ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$supervisor_email]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Get intrastate trips pending security manager approval
+    public function getPendingIntrastateForSecurityManager($email) {
+        $sql = "SELECT ir.*,
+                s.name as vehicle_location_state_name,
+                fc.name as funder_code_name
+                FROM intrastate_request ir
+                JOIN state s ON ir.vehicle_location_state_id = s.id
+                JOIN funder_codes fc ON ir.funder_code_id = fc.id
+                WHERE ir.security_manager_email = ?
+                AND ir.status = 'pending' AND ir.current_approval_level = 'security_manager'
+                ORDER BY ir.trip_date ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$email]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Get interstate trips pending supervisor approval
+    public function getPendingInterstateForSupervisor($supervisor_email) {
+        $sql = "SELECT ir.*,
+                vs.name as vehicle_location_state_name,
+                ars.name as arrival_state_name,
+                fc.name as funder_code_name
+                FROM interstate_request ir
+                JOIN state vs ON ir.vehicle_location_state_id = vs.id
+                JOIN state ars ON ir.arrival_location_state_id = ars.id
+                JOIN funder_codes fc ON ir.funder_code_id = fc.id
+                WHERE ir.supervisor_email = ?
+                AND ir.status = 'pending' AND ir.current_approval_level = 'reviewer'
+                ORDER BY ir.trip_date ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$supervisor_email]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Get interstate trips pending security manager approval
+    public function getPendingInterstateForSecurityManager($email) {
+        $sql = "SELECT ir.*,
+                vs.name as vehicle_location_state_name,
+                ars.name as arrival_state_name,
+                fc.name as funder_code_name
+                FROM interstate_request ir
+                JOIN state vs ON ir.vehicle_location_state_id = vs.id
+                JOIN state ars ON ir.arrival_location_state_id = ars.id
+                JOIN funder_codes fc ON ir.funder_code_id = fc.id
+                WHERE ir.security_manager_email = ?
+                AND ir.status = 'pending' AND ir.current_approval_level = 'security_manager'
+                ORDER BY ir.trip_date ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$email]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
 }
 ?>

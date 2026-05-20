@@ -257,8 +257,8 @@
                     <?php if ($request->assigned_driver_id): ?>
                     <div class="alert alert-success mt-3 rounded-4">
                         <i class="fas fa-user-check me-2"></i> <strong>Assigned Driver:</strong>
-                        <?= htmlspecialchars($request->driver_email ?? ''); ?>
-                        (<?= htmlspecialchars($request->driver_phone ?? ''); ?>)
+                        <?= htmlspecialchars($request->driver_name ?? $request->driver_email ?? ''); ?>
+                        <?php if ($request->driver_phone ?? null): ?>(<?= htmlspecialchars($request->driver_phone) ?>)<?php endif; ?>
                     </div>
                     <?php endif; ?>
                 </div>

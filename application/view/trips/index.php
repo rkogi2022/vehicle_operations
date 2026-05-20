@@ -60,6 +60,11 @@
                                 <?php else: ?>
                                     <span class="badge bg-primary">Intrastate</span>
                                 <?php endif; ?>
+                                <?php if (!empty($request->is_passenger)): ?>
+                                    <br><span class="badge bg-secondary mt-1" title="Booked by <?= htmlspecialchars($request->booked_by ?? '') ?>">
+                                        <i class="fas fa-user-plus"></i> Booked for you
+                                    </span>
+                                <?php endif; ?>
                             </td>
                             <td><?= htmlspecialchars($request->vehicle_location_state_name ?? ''); ?></td>
                             <td><?= htmlspecialchars($request->trip_destination); ?></td>
@@ -98,18 +103,24 @@
                                 <a href="<?= URL . $ctrl; ?>/view/<?= $request->id; ?>" class="btn btn-sm btn-info">
                                     <i class="fas fa-eye"></i> View
                                 </a>
-                                <?php if ($request->status == 'draft'): ?>
-                                    <a href="<?= URL . $ctrl; ?>/edit/<?= $request->id; ?>" class="btn btn-sm btn-warning">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </a>
-                                    <a href="<?= URL . $ctrl; ?>/delete/<?= $request->id; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Delete this draft?')">
-                                        <i class="fas fa-trash"></i> Delete
-                                    </a>
-                                <?php endif; ?>
-                                <?php if ($request->status == 'pending'): ?>
-                                    <a href="<?= URL . $ctrl; ?>/webCancel/<?= $request->id; ?>" class="btn btn-sm btn-secondary" onclick="return confirm('Cancel this request?')">
-                                        <i class="fas fa-ban"></i> Cancel
-                                    </a>
+                                <?php if (empty($request->is_passenger)): ?>
+                                    <?php if ($request->status == 'draft'): ?>
+                                        <a href="<?= URL . $ctrl; ?>/edit/<?= $request->id; ?>" class="btn btn-sm btn-warning">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </a>
+                                        <a href="<?= URL . $ctrl; ?>/delete/<?= $request->id; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Delete this draft?')">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </a>
+                                    <?php elseif ($request->status == 'pending' && ($request->current_approval_level ?? '') == 'reviewer'): ?>
+                                        <a href="<?= URL . $ctrl; ?>/edit/<?= $request->id; ?>" class="btn btn-sm btn-warning" title="Edit before supervisor approves">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </a>
+                                    <?php endif; ?>
+                                    <?php if ($request->status == 'pending'): ?>
+                                        <a href="<?= URL . $ctrl; ?>/webCancel/<?= $request->id; ?>" class="btn btn-sm btn-secondary" onclick="return confirm('Cancel this request?')">
+                                            <i class="fas fa-ban"></i> Cancel
+                                        </a>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
                         </tr>

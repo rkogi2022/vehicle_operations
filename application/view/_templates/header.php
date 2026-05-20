@@ -160,25 +160,20 @@ function isActive($pages, $current) {
                     <i class="fas fa-check-double"></i> APPROVALS
                 </a>
                 <div class="dropdown-menu">
+                    <a href="<?php echo URL; ?>intrastate/pendingApprovals" class="dropdown-item">
+                        <i class="fas fa-bell text-warning"></i> Pending Approvals
+                    </a>
+                    <div class="dropdown-divider"></div>
                     <a href="<?php echo URL; ?>intrastate/allTrips" class="dropdown-item">
                         <i class="fas fa-list-alt text-dark"></i> All Trips
                     </a>
                     <div class="dropdown-divider"></div>
                     <a href="<?php echo URL; ?>intrastate/operationsDashboard" class="dropdown-item">
-                        <i class="fas fa-clock"></i> Intrastate Approvals
+                        <i class="fas fa-clock"></i> Intrastate Approvals-Operations
                     </a>
                     <a href="<?php echo URL; ?>interstate/operationsDashboard" class="dropdown-item">
-                        <i class="fas fa-clock"></i> Interstate Approvals
+                        <i class="fas fa-clock"></i> Interstate Approvals-Operations
                     </a>
-                    <?php if ($role === 'admin' || $role === 'super_admin'): ?>
-                        <div class="dropdown-divider"></div>
-                        <a href="<?php echo URL; ?>trip/supervisorDashboard" class="dropdown-item">
-                            <i class="fas fa-user-tie"></i> Test Approvals (Supervisor)
-                        </a>
-                        <a href="<?php echo URL; ?>trip/operationsDashboard" class="dropdown-item">
-                            <i class="fas fa-chart-line"></i> Test Operations Dashboard
-                        </a>
-                    <?php endif; ?>
                 </div>
             </div>
             

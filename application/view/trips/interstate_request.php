@@ -45,7 +45,7 @@
                                         <?php foreach ($supervisors as $supervisor): ?>
                                             <option value="<?= htmlspecialchars($supervisor->email); ?>" 
                                                 <?= (isset($request) && $request->supervisor_email == $supervisor->email) ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($supervisor->email); ?> (<?= htmlspecialchars($supervisor->role); ?>)
+                                                <?= htmlspecialchars(ucwords(str_replace(['.','_','-'],' ', explode('@',$supervisor->email)[0]))); ?> &mdash; <?= htmlspecialchars($supervisor->email); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     <?php endif; ?>
@@ -66,11 +66,11 @@
                                 <label for="vehicle_location_state_id" class="form-label">Departure State (Vehicle Location) <span class="text-danger">*</span></label>
                                 <select class="form-control" id="vehicle_location_state_id" name="vehicle_location_state_id" required>
                                     <option value="">Select Departure State</option>
-                                    <?php if (isset($ea_states)): ?>
-                                        <?php foreach ($ea_states as $state): ?>
-                                            <option value="<?= $state->state_id; ?>"
-                                                <?= (isset($request) && $request->vehicle_location_state_id == $state->state_id) ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($state->state_name); ?>
+                                    <?php if (isset($departure_states)): ?>
+                                        <?php foreach ($departure_states as $state): ?>
+                                            <option value="<?= $state->id; ?>"
+                                                <?= (isset($request) && $request->vehicle_location_state_id == $state->id) ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($state->name); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     <?php endif; ?>
@@ -370,6 +370,9 @@
                         <h6 class="mb-0">Approvers (Auto-populated based on departure state)</h6>
                     </div>
                     <div class="card-body">
+                        <div id="approverFallbackNotice" class="alert alert-warning py-2 mb-3" style="display:none;">
+                            <i class="fas fa-exclamation-triangle"></i> This state has no specific EA configuration — using country-level default approvers.
+                        </div>
                         <div class="row">
                             <div class="col-md-3 mb-3">
                                 <label for="reviewer_email" class="form-label">Reviewer</label>
@@ -403,7 +406,7 @@
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-12 mb-3">
-                                <label class="form-label">Will the trip exceed 6:00 PM (1800hrs)?</label>
+                                <label class="form-label">Will the trip exceed 5:30 PM (1730hrs)?</label>
                                 <div>
                                     <div class="form-check form-check-inline">
                                         <input class="form-check-input" type="radio" name="driver_overtime" id="overtime_no" value="no" checked>
@@ -433,18 +436,13 @@
                             </div>
                             <div class="row">
                                 <div class="col-md-12 mb-3">
-                                    <label for="overtime_manager_email" class="form-label">Overtime Trip Manager</label>
-                                    <select class="form-control" id="overtime_manager_email" name="overtime_manager_email">
-                                        <option value="">Select Manager</option>
-                                        <?php if (isset($overtimeManagers)): ?>
-                                            <?php foreach ($overtimeManagers as $manager): ?>
-                                                <option value="<?= htmlspecialchars($manager->email); ?>" 
-                                                    <?= (isset($request) && $request->overtime_manager_email == $manager->email) ? 'selected' : '' ?>>
-                                                    <?= htmlspecialchars($manager->email); ?> (<?= htmlspecialchars($manager->role); ?>)
-                                                </option>
-                                            <?php endforeach; ?>
-                                        <?php endif; ?>
-                                    </select>
+                                    <label class="form-label">Overtime Manager</label>
+                                    <input type="text" class="form-control bg-light" id="overtime_manager_display" readonly
+                                           placeholder="Auto-filled from state configuration"
+                                           value="<?= isset($request) && $request->overtime_manager_email ? htmlspecialchars($request->overtime_manager_email . ' (' . explode('@', $request->overtime_manager_email)[0] . ')') : '' ?>">
+                                    <input type="hidden" id="overtime_manager_email_hidden" name="overtime_manager_email"
+                                           value="<?= isset($request) ? htmlspecialchars($request->overtime_manager_email ?? '') : '' ?>">
+                                    <small class="text-muted">Assigned automatically based on your selected state.</small>
                                 </div>
                             </div>
                         </div>
@@ -487,8 +485,8 @@
                 
                 <!-- Form Buttons -->
                 <div class="text-end">
-                    <button type="button" class="btn btn-secondary" onclick="saveAsDraft()">Save as Draft</button>
-                    <button type="submit" class="btn btn-primary">Submit Request</button>
+                    <button type="button" class="btn btn-secondary" id="draftBtn" onclick="saveAsDraft()">Save as Draft</button>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">Submit Request</button>
                     <a href="<?= URL; ?>interstate" class="btn btn-danger">Cancel</a>
                 </div>
             </form>
@@ -497,6 +495,13 @@
 </div>
 
 <script>
+// Converts email prefix to display name: "rita.kogi" → "Rita Kogi"
+function formatName(email) {
+    if (!email) return '';
+    const prefix = email.split('@')[0];
+    return prefix.split(/[._-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 // Store all hotels data
 let allHotels = [];
 
@@ -565,12 +570,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const coReviewerField = document.getElementById('co_reviewer_email');
     const managerField = document.getElementById('manager_email');
     const securityManagerField = document.getElementById('security_manager_email');
-    
-    const reviewerHidden = document.getElementById('reviewer_email_hidden');
-    const coReviewerHidden = document.getElementById('co_reviewer_email_hidden');
-    const managerHidden = document.getElementById('manager_email_hidden');
+    const overtimeManagerDisplay = document.getElementById('overtime_manager_display');
+    const overtimeManagerHidden  = document.getElementById('overtime_manager_email_hidden');
+
+    const reviewerHidden        = document.getElementById('reviewer_email_hidden');
+    const coReviewerHidden      = document.getElementById('co_reviewer_email_hidden');
+    const managerHidden         = document.getElementById('manager_email_hidden');
     const securityManagerHidden = document.getElementById('security_manager_email_hidden');
-    
+
     stateSelect.addEventListener('change', function() {
         const stateId = this.value;
         if (stateId) {
@@ -579,18 +586,54 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(data => {
                     if (data && data.success) {
                         const config = data.data;
-                        reviewerField.value = config.reviewer_email + ' (' + (config.reviewer_email.split('@')[0]) + ')';
-                        coReviewerField.value = config.co_reviewer_email ? config.co_reviewer_email + ' (' + (config.co_reviewer_email.split('@')[0]) + ')' : 'Not assigned';
-                        managerField.value = config.manager_email + ' (' + (config.manager_email.split('@')[0]) + ')';
-                        securityManagerField.value = config.security_manager_email ? config.security_manager_email + ' (' + (config.security_manager_email.split('@')[0]) + ')' : 'Not assigned';
-                        
-                        reviewerHidden.value = config.reviewer_email;
-                        coReviewerHidden.value = config.co_reviewer_email || '';
-                        managerHidden.value = config.manager_email;
+
+                        reviewerField.value        = config.reviewer_email + ' — ' + formatName(config.reviewer_email);
+                        coReviewerField.value      = config.co_reviewer_email ? config.co_reviewer_email + ' — ' + formatName(config.co_reviewer_email) : 'Not assigned';
+                        managerField.value         = config.manager_email + ' — ' + formatName(config.manager_email);
+                        securityManagerField.value = config.security_manager_email ? config.security_manager_email + ' — ' + formatName(config.security_manager_email) : 'Not assigned';
+
+                        reviewerHidden.value        = config.reviewer_email;
+                        coReviewerHidden.value      = config.co_reviewer_email || '';
+                        managerHidden.value         = config.manager_email;
                         securityManagerHidden.value = config.security_manager_email || '';
+
+                        // Overtime manager
+                        if (config.overtime_manager_email) {
+                            overtimeManagerDisplay.value = config.overtime_manager_email + ' — ' + formatName(config.overtime_manager_email);
+                            overtimeManagerHidden.value  = config.overtime_manager_email;
+                        } else {
+                            overtimeManagerDisplay.value = 'Not configured';
+                            overtimeManagerHidden.value  = '';
+                        }
+
+                        document.getElementById('approverFallbackNotice').style.display = data.is_fallback ? 'block' : 'none';
+                    } else {
+                        reviewerField.value = 'Not configured';
+                        coReviewerField.value = 'Not configured';
+                        managerField.value = 'Not configured';
+                        securityManagerField.value = 'Not configured';
+                        reviewerHidden.value = '';
+                        coReviewerHidden.value = '';
+                        managerHidden.value = '';
+                        securityManagerHidden.value = '';
+                        overtimeManagerDisplay.value = '';
+                        overtimeManagerHidden.value = '';
+                        document.getElementById('approverFallbackNotice').style.display = 'none';
                     }
                 })
                 .catch(error => console.error('Error:', error));
+        } else {
+            reviewerField.value = '';
+            coReviewerField.value = '';
+            managerField.value = '';
+            securityManagerField.value = '';
+            reviewerHidden.value = '';
+            coReviewerHidden.value = '';
+            managerHidden.value = '';
+            securityManagerHidden.value = '';
+            overtimeManagerDisplay.value = '';
+            overtimeManagerHidden.value  = '';
+            document.getElementById('approverFallbackNotice').style.display = 'none';
         }
     });
     
@@ -777,19 +820,47 @@ document.addEventListener('DOMContentLoaded', function() {
         if ('<?= $request->pickup_time ?>') {
             document.getElementById('pickup_time').value = '<?= $request->pickup_time ?>';
         }
-        if ('<?= $request->vehicle_location_state_id ?>') {
-            setTimeout(function() {
-                stateSelect.dispatchEvent(new Event('change'));
-            }, 100);
-        }
+        // Pre-populate approver fields from saved request data instead of re-fetching
+        (function() {
+            const r  = '<?= addslashes($request->reviewer_email ?? '') ?>';
+            const cr = '<?= addslashes($request->co_reviewer_email ?? '') ?>';
+            const m  = '<?= addslashes($request->manager_email ?? '') ?>';
+            const sm = '<?= addslashes($request->security_manager_email ?? '') ?>';
+            const om = '<?= addslashes($request->overtime_manager_email ?? '') ?>';
+            if (r) {
+                reviewerField.value        = r  + ' — ' + formatName(r);
+                coReviewerField.value      = cr ? cr + ' — ' + formatName(cr) : 'Not assigned';
+                managerField.value         = m  + ' — ' + formatName(m);
+                securityManagerField.value = sm ? sm + ' — ' + formatName(sm) : 'Not assigned';
+                reviewerHidden.value        = r;
+                coReviewerHidden.value      = cr;
+                managerHidden.value         = m;
+                securityManagerHidden.value = sm;
+                if (overtimeManagerDisplay) {
+                    overtimeManagerDisplay.value = om ? om + ' — ' + formatName(om) : 'Not configured';
+                    overtimeManagerHidden.value  = om;
+                }
+            }
+        })();
         calculateNights();
     <?php endif; ?>
 });
 
 function saveAsDraft() {
+    const btn = document.getElementById('draftBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
     document.getElementById('formAction').value = 'draft';
     document.getElementById('tripRequestForm').submit();
 }
+
+// Prevent double-submit on the main submit button
+document.getElementById('tripRequestForm').addEventListener('submit', function(e) {
+    const btn = document.getElementById('submitBtn');
+    if (btn.disabled) { e.preventDefault(); return; }
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Submitting…';
+});
 </script>
 
 <style>

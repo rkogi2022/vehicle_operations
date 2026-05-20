@@ -65,7 +65,7 @@ class Interstate extends Controller
         $this->requireLogin();
         
         // Get dropdown data
-        $ea_states = $this->model->getAllEaStatesForDropdown(); // departure state (EA-configured only)
+        $departure_states = $this->model->getStatesByCountry($_SESSION['country_id']); // departure: all states in user's country
         $states = $this->model->getAllStates();                 // arrival state (all states)
         $airlines = $this->model->getAllAirlines();
         $funder_codes = $this->model->getAllFunders();
@@ -92,26 +92,35 @@ class Interstate extends Controller
             exit();
         }
 
-        // Check permission - only owner can edit draft
-        if ($request->staff_email != $_SESSION['user_email'] || $request->status != 'draft') {
+        // Only owner can edit; allowed before supervisor approves (draft or pending-reviewer)
+        if ($request->staff_email != $_SESSION['user_email']) {
             $_SESSION['error'] = "You cannot edit this request";
             header('Location: ' . URL . 'interstate');
             exit();
         }
 
+        $canEdit = ($request->status == 'draft') ||
+                   ($request->status == 'pending' && $request->current_approval_level == 'reviewer');
+
+        if (!$canEdit) {
+            $_SESSION['error'] = "This request cannot be edited — it has already been approved by your supervisor.";
+            header('Location: ' . URL . 'interstate');
+            exit();
+        }
+
         // Get dropdown data
-        $ea_states = $this->model->getAllEaStatesForDropdown(); // departure state (EA-configured only)
+        $departure_states = $this->model->getStatesByCountry($_SESSION['country_id']); // departure: all states in user's country
         $states = $this->model->getAllStates();                 // arrival state (all states)
         $airlines = $this->model->getAllAirlines();
         $funder_codes = $this->model->getAllFunders();
         $hotels = $this->model->getHotelsWithStates();
         $supervisors = $this->model->getAdminSupervisorEmails();
         $overtimeManagers = $this->model->getAdminSupervisorEmails();
-        
+
         require APP . 'view/_templates/header.php';
         require APP . 'view/trips/interstate_request.php';
     }
-    
+
     /**
      * View request details
      */
@@ -163,9 +172,14 @@ class Interstate extends Controller
             // Get vehicle location state and auto-populate approvers
             $vehicle_location_state_id = $_POST['vehicle_location_state_id'];
             $eaStateConfig = $this->model->getEaStateConfigByStateId($vehicle_location_state_id);
-            
+
+            // Fall back to country-level default approvers if state has no EA config
+            if (!$eaStateConfig) {
+                $eaStateConfig = $this->model->getCountryDefaultApprovers($_SESSION['country_id'] ?? 0);
+            }
+
             if (!$eaStateConfig && $action == 'submit') {
-                $_SESSION['error'] = "Selected state is not configured. Please contact administrator.";
+                $_SESSION['error'] = "No approver configuration found for this state. Please contact administrator.";
                 header('Location: ' . URL . 'interstate/create');
                 exit();
             }
@@ -245,21 +259,35 @@ class Interstate extends Controller
                 'current_approval_level' => ($action == 'submit') ? 'reviewer' : 'none'
             ];
             
+            $existingStatus = $_POST['status'] ?? null;
+
             if ($action == 'draft') {
                 if ($request_id) {
                     $result = $this->model->updateInterstateRequest($request_id, $data);
                 } else {
                     $result = $this->model->saveInterstateRequestDraft($data);
                 }
-                
+
                 if ($result) {
                     $_SESSION['success'] = "Draft saved successfully";
                 } else {
                     $_SESSION['error'] = "Failed to save draft";
                 }
+            } elseif ($request_id && $existingStatus == 'pending') {
+                // Re-submit a pending trip that hasn't been supervisor-approved yet
+                $result = $this->model->updatePendingInterstateRequest($request_id, $data);
+                if ($result) {
+                    $request = $this->model->getInterstateRequestById($request_id);
+                    if ($request && $request->supervisor_email) {
+                        $this->sendSupervisorApprovalEmail($request, true);
+                    }
+                    $_SESSION['success'] = "Request updated. Your supervisor has been notified of the changes.";
+                } else {
+                    $_SESSION['error'] = "Failed to update request. It may have already been approved.";
+                }
             } else {
                 // Submit for approval
-                if ($request_id && isset($_POST['status']) && $_POST['status'] == 'draft') {
+                if ($request_id && $existingStatus == 'draft') {
                     $updateResult = $this->model->updateInterstateRequest($request_id, $data);
                     if ($updateResult) {
                         $submitResult = $this->model->submitInterstateRequest($request_id);
@@ -268,15 +296,20 @@ class Interstate extends Controller
                         $submitResult = false;
                     }
                 } else {
+                    // Guard against double-submit
+                    if ($this->model->isDuplicateInterstateRequest($user_email, $data['trip_date'], $data['trip_destination'])) {
+                        $_SESSION['error'] = "A duplicate request was detected. Please check your existing requests before submitting again.";
+                        header('Location: ' . URL . 'interstate');
+                        exit();
+                    }
                     $requestId = $this->model->createInterstateRequest($data);
                     $submitResult = $requestId ? true : false;
                     if ($submitResult) {
                         $request = $this->model->getInterstateRequestById($requestId);
                     }
                 }
-                
+
                 if ($submitResult && $request) {
-                    // Send email to supervisor (first approver)
                     $this->sendSupervisorApprovalEmail($request);
                     $_SESSION['success'] = "Request submitted for approval successfully. Supervisor has been notified.";
                 } else {
@@ -307,12 +340,18 @@ class Interstate extends Controller
             return;
         }
         
-        // Verify token
+        // Verify token (48-hour window)
         if (!$token || !$level || !$this->verifyApprovalToken($id, $level, $token)) {
-            $this->showErrorPage("Invalid or expired approval link.");
-            return;
+            if (isset($_SESSION['user_email'])) {
+                $_SESSION['info'] = "The approval link has expired. Please use the approval page below.";
+                header('Location: ' . URL . 'intrastate/pendingApprovals');
+            } else {
+                $_SESSION['expired_redirect'] = URL . 'intrastate/pendingApprovals';
+                header('Location: ' . URL . 'login?msg=link_expired');
+            }
+            exit();
         }
-        
+
         $current_level = $request->current_approval_level;
         $action_taken = false;
 
@@ -354,12 +393,18 @@ class Interstate extends Controller
             return;
         }
         
-        // Verify token
+        // Verify token (48-hour window)
         if (!$token || !$level || !$this->verifyApprovalToken($id, $level, $token)) {
-            $this->showErrorPage("Invalid or expired link.");
-            return;
+            if (isset($_SESSION['user_email'])) {
+                $_SESSION['info'] = "The rejection link has expired. Please use the approval page below.";
+                header('Location: ' . URL . 'intrastate/pendingApprovals');
+            } else {
+                $_SESSION['expired_redirect'] = URL . 'intrastate/pendingApprovals';
+                header('Location: ' . URL . 'login?msg=link_expired');
+            }
+            exit();
         }
-        
+
         // If POST request from the form
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $reason = trim($_POST['rejection_reason']);
@@ -545,14 +590,21 @@ class Interstate extends Controller
     public function getEaStateByStateId()
     {
         $this->requireLogin();
-        
+
         header('Content-Type: application/json');
         if (isset($_GET['state_id'])) {
             $config = $this->model->getEaStateConfigByStateId($_GET['state_id']);
             if ($config) {
-                echo json_encode(['success' => true, 'data' => $config]);
+                echo json_encode(['success' => true, 'data' => $config, 'is_fallback' => false]);
             } else {
-                echo json_encode(['success' => false, 'message' => 'State not configured']);
+                // Try country-level default approvers
+                $country_id = $_SESSION['country_id'] ?? null;
+                $fallback = $country_id ? $this->model->getCountryDefaultApprovers($country_id) : null;
+                if ($fallback) {
+                    echo json_encode(['success' => true, 'data' => $fallback, 'is_fallback' => true]);
+                } else {
+                    echo json_encode(['success' => false, 'message' => 'No approver configuration for this state']);
+                }
             }
         } else {
             echo json_encode(['success' => false, 'message' => 'No state ID provided']);
@@ -725,18 +777,19 @@ class Interstate extends Controller
     // ========== EMAIL SENDING METHODS ==========
 
     /**
-     * Send supervisor approval email (initial submission)
+     * Send supervisor approval email (initial submission or update)
      */
-    private function sendSupervisorApprovalEmail($request)
+    private function sendSupervisorApprovalEmail($request, $isUpdate = false)
     {
         $staffName = explode('@', $request->staff_email)[0];
-        $subject = "Interstate Trip Request Approval Required - " . $request->trip_destination;
+        $prefix = $isUpdate ? "[UPDATED] " : "";
+        $subject = $prefix . "Interstate Trip Request Approval Required - " . $request->trip_destination;
 
         $approveUrl = URL . "interstate/approve/" . $request->id . "?token=" . $this->generateApprovalToken($request->id, 'supervisor') . "&level=supervisor";
         $declineUrl = URL . "interstate/reject/" . $request->id . "?token=" . $this->generateApprovalToken($request->id, 'supervisor') . "&level=supervisor";
         $cancelUrl  = URL . "interstate/cancel/" . $request->id . "?token=" . $this->generateApprovalToken($request->id, 'cancel');
 
-        $body = $this->getSupervisorEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl);
+        $body = $this->getSupervisorEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl, $isUpdate);
 
         return $this->sendEmail($request->supervisor_email, $subject, $body);
     }
@@ -824,6 +877,7 @@ class Interstate extends Controller
     {
         $staffName   = explode('@', $request->staff_email)[0];
         $subject     = "Trip Confirmed - Driver Assigned: " . $request->trip_destination;
+        $driverName  = $request->driver_name ?? '';
         $driverEmail = $request->approved_driver_email ?? '';
         $driverPhone = $request->approved_driver_phone ?? '';
 
@@ -879,7 +933,8 @@ class Interstate extends Controller
                 <p>The operations team has confirmed your interstate trip request to <strong>' . htmlspecialchars($request->trip_destination) . '</strong>.</p>
                 <div class="driver-box">
                     <strong><i>&#128663; Assigned Driver</i></strong><br>
-                    Email: ' . htmlspecialchars($driverEmail) . '<br>
+                    ' . ($driverName ? 'Name: ' . htmlspecialchars($driverName) . '<br>' : '') . '
+                    ' . ($driverEmail ? 'Email: ' . htmlspecialchars($driverEmail) . '<br>' : '') . '
                     Phone: ' . htmlspecialchars($driverPhone) . '
                 </div>
                 <div class="details">
@@ -986,14 +1041,108 @@ class Interstate extends Controller
     }
     
     /**
-     * Verify approval token
+     * Verify approval token — accepts tokens from the last 48 hours
      */
     private function verifyApprovalToken($requestId, $level, $token)
     {
-        $expectedToken = $this->generateApprovalToken($requestId, $level);
-        return hash_equals($expectedToken, $token);
+        $secret = 'EVIDENCE_ACTION_SECRET_KEY_2024';
+        $today = floor(time() / 86400);
+        for ($i = 0; $i <= 1; $i++) {
+            $payload = $requestId . '|' . $level . '|' . ($today - $i);
+            $expected = hash_hmac('sha256', $payload, $secret);
+            if (hash_equals($expected, $token)) return true;
+        }
+        return false;
     }
-    
+
+    /**
+     * System-based approval (logged-in supervisor or security manager)
+     */
+    public function systemApprove($id)
+    {
+        $this->requireLogin();
+        $user_email = $_SESSION['user_email'];
+
+        $request = $this->model->getInterstateRequestById($id);
+        if (!$request) {
+            $_SESSION['error'] = "Request not found.";
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $level = $request->current_approval_level;
+
+        if ($level == 'reviewer' && $request->supervisor_email == $user_email) {
+            $result = $this->processSupervisorApproval($request);
+            $_SESSION[$result ? 'success' : 'error'] = $result
+                ? "Request approved. Security manager has been notified."
+                : "Failed to approve request.";
+        } elseif ($level == 'security_manager' && $request->security_manager_email == $user_email) {
+            $result = $this->processSecurityManagerApproval($request);
+            $_SESSION[$result ? 'success' : 'error'] = $result
+                ? "Request approved. Operations team has been notified."
+                : "Failed to approve request.";
+        } else {
+            $_SESSION['error'] = "You are not authorized to approve this request at its current stage.";
+        }
+
+        header('Location: ' . URL . 'intrastate/pendingApprovals');
+        exit();
+    }
+
+    /**
+     * System-based rejection (logged-in supervisor or security manager)
+     */
+    public function systemReject($id)
+    {
+        $this->requireLogin();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $user_email = $_SESSION['user_email'];
+        $reason = trim($_POST['rejection_reason'] ?? '');
+
+        if (empty($reason)) {
+            $_SESSION['error'] = "Rejection reason is required.";
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $request = $this->model->getInterstateRequestById($id);
+        if (!$request) {
+            $_SESSION['error'] = "Request not found.";
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $level = $request->current_approval_level;
+        $authorized = ($level == 'reviewer' && $request->supervisor_email == $user_email) ||
+                      ($level == 'security_manager' && $request->security_manager_email == $user_email);
+
+        if (!$authorized) {
+            $_SESSION['error'] = "You are not authorized to reject this request.";
+            header('Location: ' . URL . 'intrastate/pendingApprovals');
+            exit();
+        }
+
+        $db = $this->model->getDb();
+        $stmt = $db->prepare("UPDATE interstate_request SET status = 'rejected', rejection_reason = ?, rejected_by = ?, rejected_at = NOW() WHERE id = ?");
+        $result = $stmt->execute([$reason, $user_email, $id]);
+
+        if ($result) {
+            $this->sendRejectionEmail($request, $reason, explode('@', $user_email)[0]);
+            $_SESSION['success'] = "Request rejected. The requester has been notified.";
+        } else {
+            $_SESSION['error'] = "Failed to reject request.";
+        }
+
+        header('Location: ' . URL . 'intrastate/pendingApprovals');
+        exit();
+    }
+
     /**
      * Get rejecter email based on level
      */
@@ -1186,8 +1335,11 @@ class Interstate extends Controller
     /**
      * Supervisor email template
      */
-    private function getSupervisorEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl)
+    private function getSupervisorEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl, $isUpdate = false)
     {
+        $headerBg = $isUpdate ? '#e67e22' : '#007bff';
+        $updateBanner = $isUpdate ? '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:10px 14px;margin-bottom:14px;"><strong>&#9888; Note:</strong> This trip request has been <strong>updated</strong> by the requester. Please review the new details before approving.</div>' : '';
+        $actionText = $isUpdate ? 'updated an interstate trip request' : 'submitted an interstate trip request';
         return '
         <!DOCTYPE html>
         <html>
@@ -1195,7 +1347,7 @@ class Interstate extends Controller
             <style>
                 body { font-family: Arial, sans-serif; line-height: 1.6; }
                 .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: #007bff; color: white; padding: 15px; text-align: center; border-radius: 5px 5px 0 0; }
+                .header { background: ' . $headerBg . '; color: white; padding: 15px; text-align: center; border-radius: 5px 5px 0 0; }
                 .content { background: #f8f9fa; padding: 20px; border: 1px solid #ddd; border-top: none; }
                 .details { background: white; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #007bff; }
                 .button { display: inline-block; padding: 10px 20px; margin: 10px; text-decoration: none; border-radius: 5px; font-weight: bold; }
@@ -1211,8 +1363,9 @@ class Interstate extends Controller
                     <h2>Interstate Trip Request Approval Required</h2>
                 </div>
                 <div class="content">
+                    ' . $updateBanner . '
                     <p>Dear Supervisor,</p>
-                    <p>A staff member, <strong>' . htmlspecialchars($staffName) . '</strong>, has submitted an interstate trip request for your approval.</p>
+                    <p>A staff member, <strong>' . htmlspecialchars($staffName) . '</strong>, has ' . $actionText . ' for your approval.</p>
 
                     <div class="details">
                         <h4>Trip Details:</h4>
@@ -1234,7 +1387,7 @@ class Interstate extends Controller
                         <a href="' . $cancelUrl . '" class="button cancel">&#10227; CANCEL</a>
                     </div>
 
-                    <p><small>Click one of the buttons above. Links expire in 24 hours.</small></p>
+                    <p><small>Click one of the buttons above. Links expire in 48 hours. If expired, log in and visit <a href="' . URL . 'intrastate/pendingApprovals">Pending Approvals</a>.</small></p>
                 </div>
                 <div class="footer">
                     <p>This is an automated message. Please do not reply.</p>
@@ -1295,7 +1448,7 @@ class Interstate extends Controller
                         <a href="' . $cancelUrl . '" class="button cancel">⟳ CANCEL</a>
                     </div>
                     
-                    <p><small>Click one of the buttons above. Links expire in 24 hours.</small></p>
+                    <p><small>Click one of the buttons above. Links expire in 48 hours. If expired, log in and visit <a href="' . URL . 'intrastate/pendingApprovals">Pending Approvals</a>.</small></p>
                 </div>
                 <div class="footer">
                     <p>This is an automated message. Please do not reply.</p>
@@ -1304,7 +1457,7 @@ class Interstate extends Controller
         </body>
         </html>';
     }
-    
+
     /**
      * Operations team email template
      */

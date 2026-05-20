@@ -140,7 +140,7 @@ CREATE TABLE `staff_login` (
 INSERT INTO `staff_login` (`email`, `password`, `role`, `country_id`, `state_id`, `department_id`) 
 VALUES 
 (
-    'admin@example.com', 
+    'admin@test.com', 
     '$2y$10$YourGeneratedHashHere', 
     'super_admin', 
     (SELECT id FROM country WHERE code = 'NGA'), 

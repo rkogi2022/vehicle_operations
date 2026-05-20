@@ -42,31 +42,32 @@ class drivers extends Controller
     public function create()
     {
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            $email = trim($_POST['email']);
-            $phone = trim($_POST['phone']);
-            
+            $name  = trim($_POST['name'] ?? '');
+            $email = trim($_POST['email'] ?? '');
+            $phone = trim($_POST['phone'] ?? '');
+
             // Validate input
-            if (empty($email) || empty($phone)) {
-                $_SESSION['error'] = "Email and phone number are required";
+            if (empty($name) || empty($phone)) {
+                $_SESSION['error'] = "Name and phone number are required";
                 header('Location: ' . URL . 'drivers/drivers');
                 exit();
             }
-            
-            // Validate email format
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+
+            // Validate email format only if provided
+            if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $_SESSION['error'] = "Invalid email format";
                 header('Location: ' . URL . 'drivers/drivers');
                 exit();
             }
-            
-            // Check if email already exists
-            if ($this->model->driverEmailExists($email)) {
+
+            // Check if email already exists (only when email given)
+            if (!empty($email) && $this->model->driverEmailExists($email)) {
                 $_SESSION['error'] = "Email already exists";
                 header('Location: ' . URL . 'drivers/drivers');
                 exit();
             }
-            
-            $result = $this->model->addDriver($email, $phone);
+
+            $result = $this->model->addDriver($name, $email ?: null, $phone);
             
             if ($result) {
                 $_SESSION['success'] = "Driver created successfully";
@@ -97,30 +98,29 @@ class drivers extends Controller
         }
         
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            $email = trim($_POST['email']);
-            $phone = trim($_POST['phone']);
-            
-            if (empty($email) || empty($phone)) {
-                $_SESSION['error'] = "Email and phone number are required";
+            $name  = trim($_POST['name'] ?? '');
+            $email = trim($_POST['email'] ?? '');
+            $phone = trim($_POST['phone'] ?? '');
+
+            if (empty($name) || empty($phone)) {
+                $_SESSION['error'] = "Name and phone number are required";
                 header('Location: ' . URL . 'drivers/drivers');
                 exit();
             }
-            
-            // Validate email format
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+
+            if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $_SESSION['error'] = "Invalid email format";
                 header('Location: ' . URL . 'drivers/drivers');
                 exit();
             }
-            
-            // Check if email exists for other drivers
-            if ($this->model->driverEmailExists($email, $id)) {
+
+            if (!empty($email) && $this->model->driverEmailExists($email, $id)) {
                 $_SESSION['error'] = "Email already exists for another driver";
                 header('Location: ' . URL . 'drivers/drivers');
                 exit();
             }
-            
-            $result = $this->model->updateDriver($id, $email, $phone);
+
+            $result = $this->model->updateDriver($id, $name, $email ?: null, $phone);
             
             if ($result) {
                 $_SESSION['success'] = "Driver updated successfully";

@@ -322,19 +322,11 @@
                             <div class="info-label"><i class="fas fa-calendar-day"></i> Trip Date</div>
                             <div class="info-value"><?= date('F j, Y', strtotime($request->trip_date)); ?></div>
                         </div>
-                        <div class="info-item">
-                            <div class="info-label"><i class="fas fa-calendar-week"></i> Return Date</div>
-                            <div class="info-value"><?= date('F j, Y', strtotime($request->return_date)); ?></div>
-                        </div>
                     </div>
 
                     <div class="divider-light"></div>
 
                     <div class="info-grid">
-                        <div class="info-item">
-                            <div class="info-label"><i class="fas fa-hourglass-half"></i> Total Nights</div>
-                            <div class="info-value"><?= $request->total_nights; ?> nights</div>
-                        </div>
                         <div class="info-item">
                             <div class="info-label"><i class="fas fa-map-marker-alt"></i> Pickup Location</div>
                             <div class="info-value"><?= htmlspecialchars($request->pickup_location); ?></div>
@@ -394,7 +386,9 @@
 
                     <?php if ($request->assigned_driver_id): ?>
                     <div class="alert alert-success mt-3 rounded-4">
-                        <i class="fas fa-user-check me-2"></i> <strong>Assigned Driver:</strong> <?= htmlspecialchars($request->driver_email ?? ''); ?> (<?= htmlspecialchars($request->driver_phone ?? ''); ?>)
+                        <i class="fas fa-user-check me-2"></i> <strong>Assigned Driver:</strong>
+                        <?= htmlspecialchars($request->driver_name ?? $request->driver_email ?? ''); ?>
+                        <?php if ($request->driver_phone ?? null): ?>(<?= htmlspecialchars($request->driver_phone) ?>)<?php endif; ?>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -466,6 +460,30 @@
                     <?php endif; ?>
                 </div>
             </div>
+
+            <!-- Passengers -->
+            <?php if (!empty($passengers)): ?>
+            <div class="card-modern">
+                <div class="card-header-clean">
+                    <i class="fas fa-users"></i>
+                    <h5>Passengers</h5>
+                </div>
+                <div class="card-body-modern">
+                    <?php foreach ($passengers as $p):
+                        $pName = ucwords(str_replace(['.','_','-'],' ', explode('@',$p->passenger_email)[0]));
+                    ?>
+                    <div class="contact-line">
+                        <i class="fas fa-user-plus text-primary"></i>
+                        <strong><?= htmlspecialchars($pName) ?></strong>
+                        <span class="text-muted small ms-1"><?= htmlspecialchars($p->passenger_email) ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                    <div class="text-muted small mt-2">
+                        <i class="fas fa-info-circle"></i> Added by <?= htmlspecialchars(ucwords(str_replace(['.','_','-'],' ', explode('@',$passengers[0]->added_by)[0]))) ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Rejection details if any -->
             <?php if ($request->status == 'rejected' && $request->rejection_reason): ?>

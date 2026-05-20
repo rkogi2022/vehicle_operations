@@ -66,6 +66,7 @@
     </div>
     <div class="split right">
         
+      <?php if (!empty($info_message)) echo $info_message; ?>
       <form class="login-form" method="POST" action="<?php echo URL; ?>login/loginUser">
         <div style="display: flex; align-items: center;">
           <h2>Login</h2>
