@@ -69,7 +69,7 @@
                             <td><?= htmlspecialchars($request->vehicle_location_state_name ?? ''); ?></td>
                             <td><?= htmlspecialchars($request->trip_destination); ?></td>
                             <td><?= date('M d, Y', strtotime($request->trip_date)); ?></td>
-                            <td><?= date('M d, Y', strtotime($request->return_date)); ?></td>
+                            <td><?= isset($request->return_date) && $request->return_date ? date('M d, Y', strtotime($request->return_date)) : '<span class="text-muted fst-italic small">Not applicable for intrastate</span>'; ?></td>
                             <td><?= htmlspecialchars($request->funder_code_name ?? ''); ?></td>
                             <td>
                                 <?php

@@ -249,9 +249,7 @@ class intrastate extends Controller
             }
             
             $trip_date    = $_POST['trip_date'];
-            $return_date  = null;
-            $total_nights = 0;
-            
+
             // Prepare data
             $data = [
                 'staff_email' => $user_email,
@@ -263,8 +261,6 @@ class intrastate extends Controller
                 'manager_email' => $eaStateConfig ? $eaStateConfig->manager_email : null,
                 'security_manager_email' => $eaStateConfig ? $eaStateConfig->security_manager_email : null,
                 'trip_date' => $trip_date,
-                'return_date' => $return_date,
-                'total_nights' => $total_nights,
                 'purpose' => trim($_POST['purpose']),
                 'pickup_location' => trim($_POST['pickup_location']),
                 'trip_destination' => trim($_POST['trip_destination']),

@@ -1310,14 +1310,14 @@ class Model
         $sql = "INSERT INTO intrastate_request (
             staff_email, staff_phone, supervisor_email, vehicle_location_state_id,
             reviewer_email, co_reviewer_email, manager_email, security_manager_email,
-            trip_date, return_date, total_nights, purpose, pickup_location,
+            trip_date, purpose, pickup_location,
             trip_destination, trip_destination_time, route_information, funder_code_id,
             driver_overtime, trip_activity, reason_for_overtime, overtime_manager_email,
             need_driver_pickup, pickup_time, status, current_approval_level
         ) VALUES (
             :staff_email, :staff_phone, :supervisor_email, :vehicle_location_state_id,
             :reviewer_email, :co_reviewer_email, :manager_email, :security_manager_email,
-            :trip_date, :return_date, :total_nights, :purpose, :pickup_location,
+            :trip_date, :purpose, :pickup_location,
             :trip_destination, :trip_destination_time, :route_information, :funder_code_id,
             :driver_overtime, :trip_activity, :reason_for_overtime, :overtime_manager_email,
             :need_driver_pickup, :pickup_time, 'pending', 'reviewer'
@@ -1334,8 +1334,6 @@ class Model
             ':manager_email' => $data['manager_email'],
             ':security_manager_email' => $data['security_manager_email'],
             ':trip_date' => $data['trip_date'],
-            ':return_date' => $data['return_date'],
-            ':total_nights' => $data['total_nights'],
             ':purpose' => $data['purpose'],
             ':pickup_location' => $data['pickup_location'],
             ':trip_destination' => $data['trip_destination'],
@@ -1604,7 +1602,7 @@ class Model
 
     // Update intrastate request (for editing draft)
     public function updateIntrastateRequest($id, $data) {
-        $sql = "UPDATE intrastate_request SET 
+        $sql = "UPDATE intrastate_request SET
                 staff_phone = :staff_phone,
                 supervisor_email = :supervisor_email,
                 vehicle_location_state_id = :vehicle_location_state_id,
@@ -1613,8 +1611,6 @@ class Model
                 manager_email = :manager_email,
                 security_manager_email = :security_manager_email,
                 trip_date = :trip_date,
-                return_date = :return_date,
-                total_nights = :total_nights,
                 purpose = :purpose,
                 pickup_location = :pickup_location,
                 trip_destination = :trip_destination,
@@ -1629,7 +1625,29 @@ class Model
                 pickup_time = :pickup_time
                 WHERE id = :id AND status = 'draft'";
         $stmt = $this->db->prepare($sql);
-        return $stmt->execute($data);
+        return $stmt->execute([
+            ':staff_phone'               => $data['staff_phone'],
+            ':supervisor_email'          => $data['supervisor_email'],
+            ':vehicle_location_state_id' => $data['vehicle_location_state_id'],
+            ':reviewer_email'            => $data['reviewer_email'],
+            ':co_reviewer_email'         => $data['co_reviewer_email'],
+            ':manager_email'             => $data['manager_email'],
+            ':security_manager_email'    => $data['security_manager_email'],
+            ':trip_date'                 => $data['trip_date'],
+            ':purpose'                   => $data['purpose'],
+            ':pickup_location'           => $data['pickup_location'],
+            ':trip_destination'          => $data['trip_destination'],
+            ':trip_destination_time'     => $data['trip_destination_time'],
+            ':route_information'         => $data['route_information'],
+            ':funder_code_id'            => $data['funder_code_id'],
+            ':driver_overtime'           => $data['driver_overtime'],
+            ':trip_activity'             => $data['trip_activity'],
+            ':reason_for_overtime'       => $data['reason_for_overtime'],
+            ':overtime_manager_email'    => $data['overtime_manager_email'],
+            ':need_driver_pickup'        => $data['need_driver_pickup'],
+            ':pickup_time'               => $data['pickup_time'],
+            ':id'                        => $id,
+        ]);
     }
 
     // Submit draft for approval
@@ -1644,44 +1662,42 @@ class Model
         $sql = "INSERT INTO intrastate_request (
             staff_email, staff_phone, supervisor_email, vehicle_location_state_id,
             reviewer_email, co_reviewer_email, manager_email, security_manager_email,
-            trip_date, return_date, total_nights, purpose, pickup_location,
+            trip_date, purpose, pickup_location,
             trip_destination, trip_destination_time, route_information, funder_code_id,
             driver_overtime, trip_activity, reason_for_overtime, overtime_manager_email,
             need_driver_pickup, pickup_time, status, current_approval_level
         ) VALUES (
             :staff_email, :staff_phone, :supervisor_email, :vehicle_location_state_id,
             :reviewer_email, :co_reviewer_email, :manager_email, :security_manager_email,
-            :trip_date, :return_date, :total_nights, :purpose, :pickup_location,
+            :trip_date, :purpose, :pickup_location,
             :trip_destination, :trip_destination_time, :route_information, :funder_code_id,
             :driver_overtime, :trip_activity, :reason_for_overtime, :overtime_manager_email,
             :need_driver_pickup, :pickup_time, 'draft', 'reviewer'
         )";
         $stmt = $this->db->prepare($sql);
-        
+
         return $stmt->execute([
-            ':staff_email' => $data['staff_email'],
-            ':staff_phone' => $data['staff_phone'],
-            ':supervisor_email' => $data['supervisor_email'],
+            ':staff_email'               => $data['staff_email'],
+            ':staff_phone'               => $data['staff_phone'],
+            ':supervisor_email'          => $data['supervisor_email'],
             ':vehicle_location_state_id' => $data['vehicle_location_state_id'],
-            ':reviewer_email' => $data['reviewer_email'],
-            ':co_reviewer_email' => $data['co_reviewer_email'],
-            ':manager_email' => $data['manager_email'],
-            ':security_manager_email' => $data['security_manager_email'],
-            ':trip_date' => $data['trip_date'],
-            ':return_date' => $data['return_date'],
-            ':total_nights' => $data['total_nights'],
-            ':purpose' => $data['purpose'],
-            ':pickup_location' => $data['pickup_location'],
-            ':trip_destination' => $data['trip_destination'],
-            ':trip_destination_time' => $data['trip_destination_time'],
-            ':route_information' => $data['route_information'],
-            ':funder_code_id' => $data['funder_code_id'],
-            ':driver_overtime' => $data['driver_overtime'],
-            ':trip_activity' => $data['trip_activity'],
-            ':reason_for_overtime' => $data['reason_for_overtime'],
-            ':overtime_manager_email' => $data['overtime_manager_email'],
-            ':need_driver_pickup' => $data['need_driver_pickup'],
-            ':pickup_time' => $data['pickup_time']
+            ':reviewer_email'            => $data['reviewer_email'],
+            ':co_reviewer_email'         => $data['co_reviewer_email'],
+            ':manager_email'             => $data['manager_email'],
+            ':security_manager_email'    => $data['security_manager_email'],
+            ':trip_date'                 => $data['trip_date'],
+            ':purpose'                   => $data['purpose'],
+            ':pickup_location'           => $data['pickup_location'],
+            ':trip_destination'          => $data['trip_destination'],
+            ':trip_destination_time'     => $data['trip_destination_time'],
+            ':route_information'         => $data['route_information'],
+            ':funder_code_id'            => $data['funder_code_id'],
+            ':driver_overtime'           => $data['driver_overtime'],
+            ':trip_activity'             => $data['trip_activity'],
+            ':reason_for_overtime'       => $data['reason_for_overtime'],
+            ':overtime_manager_email'    => $data['overtime_manager_email'],
+            ':need_driver_pickup'        => $data['need_driver_pickup'],
+            ':pickup_time'               => $data['pickup_time'],
         ]);
     }
 

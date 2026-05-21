@@ -43,6 +43,11 @@ CREATE TABLE `intrastate_trip_passengers` (
   CONSTRAINT `fk_itp_trip` FOREIGN KEY (`trip_id`) REFERENCES `intrastate_request` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Drop return_date and total_nights from intrastate (intrastate is same-day, no overnight stay)
+ALTER TABLE `intrastate_request`
+  DROP COLUMN `return_date`,
+  DROP COLUMN `total_nights`;
+
 -- Country-level default approvers (fallback when departure state has no EA State config)
 CREATE TABLE `country_default_approvers` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
