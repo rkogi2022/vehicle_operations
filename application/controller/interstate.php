@@ -362,8 +362,20 @@ class Interstate extends Controller
         elseif ($current_level == 'security_manager' && $level == 'security') {
             $action_taken = $this->processSecurityManagerApproval($request);
         }
+        elseif ($request->status === 'security_approved' || $request->status === 'completed') {
+            $this->showSuccessPage("Already Approved", "This request has already been fully approved. No further action is needed.");
+            return;
+        }
+        elseif ($level == 'supervisor' && in_array($current_level, ['security_manager', 'none'])) {
+            $this->showSuccessPage("Already Approved", "You have already approved this request. It has been forwarded to the next stage.");
+            return;
+        }
+        elseif ($level == 'security' && $current_level == 'none') {
+            $this->showSuccessPage("Already Approved", "You have already approved this request. Operations have been notified for driver assignment.");
+            return;
+        }
         else {
-            $this->showErrorPage("This request cannot be approved at this stage.");
+            $this->showErrorPage("This request cannot be approved at this stage. Current status: " . htmlspecialchars($request->status) . " / Level: " . htmlspecialchars($current_level ?: 'none'));
             return;
         }
 
@@ -403,6 +415,12 @@ class Interstate extends Controller
                 header('Location: ' . URL . 'login?msg=link_expired');
             }
             exit();
+        }
+
+        // Can't reject a request that's already been decided
+        if (!in_array($request->status, ['pending', 'draft'])) {
+            $this->showErrorPage("This request has already been " . htmlspecialchars($request->status) . " and cannot be rejected.");
+            return;
         }
 
         // If POST request from the form
@@ -631,9 +649,20 @@ class Interstate extends Controller
 
         $pendingDriverRequests  = $this->model->getInterstateRequestsAwaitingDriver();
         $inProgressRequests     = $this->model->getInterstateRequestsInProgress();
-        $availableDrivers       = $this->model->getAllAvailableDrivers();
+        $allDrivers             = $this->model->getAllAvailableDrivers();
         $airlines               = $this->model->getAllAirlines();
         $hotels                 = $this->model->getHotelsWithStates();
+
+        // Build per-destination-state driver lists for both awaiting and in-progress trips
+        $driversByState = [];
+        $allTripsForDriverMap = array_merge($pendingDriverRequests, $inProgressRequests);
+        foreach ($allTripsForDriverMap as $req) {
+            $sid = $req->arrival_location_state_id ?? null;
+            if ($sid && !isset($driversByState[$sid])) {
+                $stateDrivers = $this->model->getDriversByStateId($sid);
+                $driversByState[$sid] = !empty($stateDrivers) ? $stateDrivers : $allDrivers;
+            }
+        }
 
         $stats = [
             'awaiting_driver' => count($pendingDriverRequests),
@@ -677,7 +706,7 @@ class Interstate extends Controller
         $returnDriverId  = ($differentReturn === 'yes' && !empty($_POST['return_driver_id'])) ? $_POST['return_driver_id'] : null;
 
         $rawHotelId = $_POST['hotel_id'] ?? null;
-        $hotelId    = ($rawHotelId && $rawHotelId !== 'other') ? $rawHotelId : null;
+        $opsHotelId = ($rawHotelId && $rawHotelId !== 'other') ? $rawHotelId : null;
 
         $data = [
             'assigned_driver_id'                     => $driver_id,
@@ -685,27 +714,36 @@ class Interstate extends Controller
             'return_assigned_driver_id'              => $returnDriverId,
             'operations_departure_flight_airline_id' => $_POST['operations_departure_flight_airline_id'] ?? null,
             'operations_return_flight_airline_id'    => $_POST['operations_return_flight_airline_id'] ?? null,
-            'hotel_id'         => $hotelId,
-            'hotel_other_name' => trim($_POST['hotel_other_name'] ?? ''),
-            'hotel_location'   => trim($_POST['hotel_location'] ?? ''),
+            'hotel_id'           => $opsHotelId,
+            'hotel_other_name'   => trim($_POST['hotel_other_name'] ?? ''),
+            'hotel_location'     => trim($_POST['hotel_location'] ?? ''),
         ];
+
+        // Check before updating whether a driver was already assigned (= this is an update, not initial assign)
+        $existingRequest = $this->model->getInterstateRequestById($id);
+        $isUpdate = !empty($existingRequest->assigned_driver_id);
 
         $result = $this->model->operationsAssignInterstate($id, $data);
 
         if ($result) {
             $request = $this->model->getInterstateRequestById($id);
             if ($request) {
-                $emailSent = $this->sendDriverAssignmentEmail($request);
-                if ($emailSent) {
-                    $_SESSION['success'] = "Driver assigned and trip details confirmed. Staff has been notified by email.";
+                if ($isUpdate) {
+                    $emailSent = $this->sendTripDetailsUpdateEmail($request, $existingRequest);
+                    $_SESSION['success'] = $emailSent
+                        ? "Trip details updated. The requester has been notified by email."
+                        : "Trip details updated. Note: email notification could not be sent.";
                 } else {
-                    $_SESSION['success'] = "Driver assigned successfully. Note: email notification to staff could not be sent.";
+                    $emailSent = $this->sendDriverAssignmentEmail($request, $existingRequest);
+                    $_SESSION['success'] = $emailSent
+                        ? "Driver assigned and trip details confirmed. Staff has been notified by email."
+                        : "Driver assigned successfully. Note: email notification to staff could not be sent.";
                 }
             } else {
-                $_SESSION['success'] = "Driver assigned successfully.";
+                $_SESSION['success'] = $isUpdate ? "Trip details updated." : "Driver assigned successfully.";
             }
         } else {
-            $_SESSION['error'] = "Failed to assign driver. Please try again.";
+            $_SESSION['error'] = "Failed to save trip details. Please try again.";
         }
 
         header('Location: ' . URL . 'interstate/operationsDashboard');
@@ -873,7 +911,7 @@ class Interstate extends Controller
     /**
      * Send driver assignment notification to staff (CC supervisor)
      */
-    private function sendDriverAssignmentEmail($request)
+    private function sendDriverAssignmentEmail($request, $previousRequest = null)
     {
         $staffName   = explode('@', $request->staff_email)[0];
         $subject     = "Trip Confirmed - Driver Assigned: " . $request->trip_destination;
@@ -889,8 +927,6 @@ class Interstate extends Controller
         $depChanged          = $confirmedDepAirline && $reqDepAirline && $confirmedDepAirline !== $reqDepAirline;
         $retChanged          = $confirmedRetAirline && $reqRetAirline && $confirmedRetAirline !== $reqRetAirline;
 
-        $hotelName     = $request->hotel_name_from_vendor ?? $request->hotel_other_name ?? null;
-        $hotelLocation = $request->hotel_location ?? '';
         $modeOfTravel  = $request->mode_of_travel ?? 'road';
         $isAir         = in_array($modeOfTravel, ['air', 'both']);
 
@@ -906,10 +942,19 @@ class Interstate extends Controller
             }
         }
 
+        $hotelName    = $request->hotel_name_from_vendor ?? $request->hotel_other_name ?? null;
+        $hotelLoc     = $request->hotel_location ?? '';
+        $prevHotelName = $previousRequest ? ($previousRequest->hotel_name_from_vendor ?? $previousRequest->hotel_other_name ?? null) : null;
         $hotelSection = '';
         if ($hotelName) {
-            $hotelSection = '<p><strong>Hotel:</strong> ' . htmlspecialchars($hotelName) .
-                ($hotelLocation ? ' — ' . htmlspecialchars($hotelLocation) : '') . '</p>';
+            $hotelChanged = $prevHotelName && $prevHotelName !== $hotelName;
+            $hotelNote    = $hotelChanged
+                ? ' <span style="color:#dc3545;">(changed from: ' . htmlspecialchars($prevHotelName) . ')</span>'
+                : ($prevHotelName ? ' <span style="color:#28a745;">(as requested)</span>' : '');
+            $hotelSection  = '<div style="background:#f0fdf4;padding:10px 14px;margin:8px 0;border-radius:5px;border-left:4px solid #28a745;">';
+            $hotelSection .= '<strong>&#127970; Hotel:</strong> ' . htmlspecialchars($hotelName) . $hotelNote;
+            if ($hotelLoc) $hotelSection .= ' &mdash; ' . htmlspecialchars($hotelLoc);
+            $hotelSection .= '</div>';
         }
 
         $pickupNote = '';
@@ -974,6 +1019,107 @@ class Interstate extends Controller
             return true;
         } catch (Exception $e) {
             error_log("Driver assignment email failed: " . $mail->ErrorInfo);
+            return false;
+        }
+    }
+
+    private function sendTripDetailsUpdateEmail($request, $previousRequest = null)
+    {
+        $staffName  = explode('@', $request->staff_email)[0];
+        $subject    = "[UPDATED] Your Interstate Trip Details Have Changed — " . $request->trip_destination;
+        $modeOfTravel = $request->mode_of_travel ?? 'road';
+        $isAir      = in_array(strtolower($modeOfTravel), ['air', 'both']);
+
+        $confirmedDepAirline = $request->ops_departure_airline_name ?? $request->requester_departure_airline ?? null;
+        $confirmedRetAirline = $request->ops_return_airline_name    ?? $request->requester_return_airline    ?? null;
+        $driverName  = $request->driver_name  ?? ($request->approved_driver_email  ? explode('@', $request->approved_driver_email)[0]  : null);
+        $driverPhone = $request->approved_driver_phone ?? '';
+        $driverEmail = $request->approved_driver_email ?? '';
+
+        $flightSection = '';
+        if ($isAir) {
+            $flightSection  = '<div style="background:#e8f4fd;padding:12px 15px;margin:10px 0;border-radius:5px;border-left:4px solid #0d6efd;">';
+            $flightSection .= '<strong>&#9992; Confirmed Flights</strong><br>';
+            $flightSection .= '<strong>Departure:</strong> ' . htmlspecialchars($confirmedDepAirline ?: 'Not specified') . '<br>';
+            $flightSection .= '<strong>Return:</strong> '   . htmlspecialchars($confirmedRetAirline ?: 'Not specified') . '<br>';
+            $flightSection .= '</div>';
+        }
+
+        $hotelName2    = $request->hotel_name_from_vendor ?? $request->hotel_other_name ?? null;
+        $hotelLoc2     = $request->hotel_location ?? '';
+        $prevHotelName = $previousRequest ? ($previousRequest->hotel_name_from_vendor ?? $previousRequest->hotel_other_name ?? null) : null;
+        $hotelSection  = '';
+        if ($hotelName2) {
+            $hotelChanged = $prevHotelName && $prevHotelName !== $hotelName2;
+            $hotelNote    = $hotelChanged
+                ? ' <span style="color:#dc3545;">(changed from: ' . htmlspecialchars($prevHotelName) . ')</span>'
+                : ($prevHotelName ? ' <span style="color:#28a745;">(as requested)</span>' : '');
+            $hotelSection  = '<div style="background:#f0fdf4;padding:12px 15px;margin:10px 0;border-radius:5px;border-left:4px solid #28a745;">';
+            $hotelSection .= '<strong>&#127970; Hotel:</strong> ' . htmlspecialchars($hotelName2) . $hotelNote;
+            if ($hotelLoc2) $hotelSection .= ' &mdash; ' . htmlspecialchars($hotelLoc2);
+            $hotelSection .= '</div>';
+        }
+
+        $pickupNote = ($request->need_driver_pickup === 'yes' && $request->pickup_time)
+            ? '<p><strong>Driver Pickup:</strong> ' . $request->pickup_time . ' at ' . htmlspecialchars($request->pickup_location) . '</p>'
+            : '';
+
+        $body = '<!DOCTYPE html><html><head><style>
+            body{font-family:Arial,sans-serif;line-height:1.6;}
+            .container{max-width:600px;margin:0 auto;padding:20px;}
+            .header{background:#e67e22;color:white;padding:15px;text-align:center;border-radius:5px 5px 0 0;}
+            .banner{background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:10px 14px;margin-bottom:14px;}
+            .content{background:#f8f9fa;padding:20px;border:1px solid #ddd;border-top:none;}
+            .details{background:white;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #e67e22;}
+            .driver-box{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 16px;margin:12px 0;}
+            .footer{text-align:center;padding:15px;font-size:12px;color:#666;}
+        </style></head><body>
+        <div class="container">
+            <div class="header"><h2>&#9888; Your Trip Details Have Been Updated</h2></div>
+            <div class="content">
+                <div class="banner"><strong>&#9888; Note:</strong> The operations team has updated the details for your upcoming trip. Please review the changes below.</div>
+                <p>Dear ' . htmlspecialchars($staffName) . ',</p>
+                <p>The confirmed details for your trip to <strong>' . htmlspecialchars($request->trip_destination) . '</strong> have been updated.</p>
+                <div class="driver-box">
+                    <strong>&#128663; Assigned Driver</strong><br>
+                    ' . ($driverName  ? 'Name: '  . htmlspecialchars($driverName)  . '<br>' : '') . '
+                    ' . ($driverEmail ? 'Email: ' . htmlspecialchars($driverEmail) . '<br>' : '') . '
+                    ' . ($driverPhone ? 'Phone: ' . htmlspecialchars($driverPhone)             : '') . '
+                </div>
+                <div class="details">
+                    <h4>Updated Trip Details:</h4>
+                    <p><strong>From:</strong> ' . htmlspecialchars($request->vehicle_location_state_name ?? '') . '</p>
+                    <p><strong>To:</strong> '   . htmlspecialchars($request->arrival_state_name ?? '') . ' — ' . htmlspecialchars($request->destination_city ?? '') . '</p>
+                    <p><strong>Trip Date:</strong>    ' . date('F j, Y', strtotime($request->trip_date)) . '</p>
+                    <p><strong>Return Date:</strong>  ' . date('F j, Y', strtotime($request->return_date)) . '</p>
+                    <p><strong>Mode of Travel:</strong> ' . ucfirst($modeOfTravel) . '</p>
+                    ' . $pickupNote . $flightSection . $hotelSection . '
+                </div>
+                <p>If you have any questions about these changes, please contact the operations team.</p>
+            </div>
+            <div class="footer"><p>This is an automated message. Please do not reply.</p></div>
+        </div></body></html>';
+
+        $mail = new PHPMailer(true);
+        try {
+            $mail->isSMTP();
+            $mail->Host       = 'smtp.gmail.com';
+            $mail->SMTPAuth   = true;
+            $mail->Username   = 'information.systems@evidenceaction.org';
+            $mail->Password   = 'rtnbqnbajjhcifbr';
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = 587;
+            $mail->setFrom('information.systems@evidenceaction.org', 'Vehicle Operations');
+            $mail->addAddress($request->staff_email);
+            if ($request->supervisor_email) $mail->addCC($request->supervisor_email);
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body    = $body;
+            $mail->AltBody = strip_tags($body);
+            $mail->send();
+            return true;
+        } catch (Exception $e) {
+            error_log("Trip update email failed: " . $mail->ErrorInfo);
             return false;
         }
     }
@@ -1340,6 +1486,7 @@ class Interstate extends Controller
         $headerBg = $isUpdate ? '#e67e22' : '#007bff';
         $updateBanner = $isUpdate ? '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:10px 14px;margin-bottom:14px;"><strong>&#9888; Note:</strong> This trip request has been <strong>updated</strong> by the requester. Please review the new details before approving.</div>' : '';
         $actionText = $isUpdate ? 'updated an interstate trip request' : 'submitted an interstate trip request';
+        [$flightSection, $hotelSection] = $this->buildEmailTripSections($request);
         return '
         <!DOCTYPE html>
         <html>
@@ -1377,9 +1524,11 @@ class Interstate extends Controller
                         <p><strong>Trip Dates:</strong> ' . date('F j, Y', strtotime($request->trip_date)) . ' - ' . date('F j, Y', strtotime($request->return_date)) . '</p>
                         <p><strong>Total Nights:</strong> ' . $request->total_nights . '</p>
                         <p><strong>Mode of Travel:</strong> ' . strtoupper($request->mode_of_travel) . '</p>
-                        ' . ($request->require_hotel == 'yes' ? '<p><strong>Hotel Required:</strong> Yes</p>' : '') . '
                         ' . ($request->driver_overtime == 'yes' ? '<p style="color: red;"><strong>&#9888; Overtime Required</strong></p>' : '') . '
                     </div>
+
+                    ' . $flightSection . '
+                    ' . $hotelSection . '
 
                     <div style="text-align: center; margin: 20px 0;">
                         <a href="' . $approveUrl . '" class="button approve">&#10003; APPROVE</a>
@@ -1402,6 +1551,7 @@ class Interstate extends Controller
      */
     private function getSecurityManagerEmailTemplate($request, $staffName, $approveUrl, $declineUrl, $cancelUrl)
     {
+        [$flightSection, $hotelSection] = $this->buildEmailTripSections($request);
         return '
         <!DOCTYPE html>
         <html>
@@ -1441,13 +1591,16 @@ class Interstate extends Controller
                         <p><strong>Mode of Travel:</strong> ' . strtoupper($request->mode_of_travel) . '</p>
                         ' . ($request->driver_overtime == 'yes' ? '<p style="color: red;"><strong>⚠ Overtime Required</strong></p>' : '') . '
                     </div>
-                    
+
+                    ' . $flightSection . '
+                    ' . $hotelSection . '
+
                     <div style="text-align: center; margin: 20px 0;">
                         <a href="' . $approveUrl . '" class="button approve">✓ APPROVE</a>
                         <a href="' . $declineUrl . '" class="button decline">✗ DECLINE</a>
                         <a href="' . $cancelUrl . '" class="button cancel">⟳ CANCEL</a>
                     </div>
-                    
+
                     <p><small>Click one of the buttons above. Links expire in 48 hours. If expired, log in and visit <a href="' . URL . 'intrastate/pendingApprovals">Pending Approvals</a>.</small></p>
                 </div>
                 <div class="footer">
@@ -1463,6 +1616,7 @@ class Interstate extends Controller
      */
     private function getOperationsTeamEmailTemplate($request, $staffName, $viewUrl)
     {
+        [$flightSection, $hotelSection] = $this->buildEmailTripSections($request);
         return '
         <!DOCTYPE html>
         <html>
@@ -1497,12 +1651,13 @@ class Interstate extends Controller
                         <p><strong>Return Date:</strong> ' . date('F j, Y', strtotime($request->return_date)) . '</p>
                         <p><strong>Arrival Time:</strong> ' . $request->trip_destination_time . '</p>
                         <p><strong>Mode of Travel:</strong> ' . strtoupper($request->mode_of_travel) . '</p>
-                        ' . ($request->require_airport_pickup == 'yes' ? '<p><strong>Airport Pickup Required:</strong> Yes</p>' : '') . '
-                        ' . ($request->require_hotel == 'yes' ? '<p><strong>Hotel Required:</strong> Yes</p>' : '') . '
                         ' . ($request->driver_overtime == 'yes' ? '<p style="color: red;"><strong>⚠ Overtime Required</strong></p>' : '') . '
                         ' . ($request->need_driver_pickup == 'yes' ? '<p><strong>Driver Pickup Required:</strong> at ' . $request->pickup_time . '</p>' : '') . '
                     </div>
-                    
+
+                    ' . $flightSection . '
+                    ' . $hotelSection . '
+
                     <div style="text-align: center; margin: 20px 0;">
                         <a href="' . $viewUrl . '" class="button">Go to Operations Dashboard</a>
                     </div>
@@ -1517,6 +1672,44 @@ class Interstate extends Controller
         </html>';
     }
     
+    // Build reusable flight + hotel HTML blocks for email templates
+    private function buildEmailTripSections($request)
+    {
+        $mode = strtolower($request->mode_of_travel ?? 'road');
+        $isAir = in_array($mode, ['air', 'both']);
+
+        $flightSection = '';
+        if ($isAir) {
+            $depAirline = $request->requester_departure_airline ?? null;
+            $retAirline = $request->requester_return_airline   ?? null;
+            $airportPickup = ($request->require_airport_pickup ?? 'no') == 'yes';
+            $airportDest   = $request->airport_pickup_dropoff_destination ?? '';
+
+            $flightSection  = '<div style="background:#e8f4fd;padding:12px 15px;margin:10px 0;border-radius:5px;border-left:4px solid #0d6efd;">';
+            $flightSection .= '<strong>&#9992; Flight Details</strong><br>';
+            $flightSection .= '<strong>Departure Airline:</strong> ' . htmlspecialchars($depAirline ?: 'Not specified') . '<br>';
+            $flightSection .= '<strong>Return Airline:</strong> '    . htmlspecialchars($retAirline ?: 'Not specified') . '<br>';
+            if ($airportPickup) {
+                $flightSection .= '<strong>Airport Pickup Required:</strong> Yes';
+                if ($airportDest) $flightSection .= ' &mdash; Drop-off: ' . htmlspecialchars($airportDest);
+                $flightSection .= '<br>';
+            }
+            $flightSection .= '</div>';
+        }
+
+        $hotelSection = '';
+        if (($request->require_hotel ?? 'no') == 'yes') {
+            $hotelName = $request->hotel_name_from_vendor ?? $request->hotel_other_name ?? null;
+            $hotelLoc  = $request->hotel_location ?? '';
+            $hotelSection  = '<div style="background:#f0fdf4;padding:12px 15px;margin:10px 0;border-radius:5px;border-left:4px solid #28a745;">';
+            $hotelSection .= '<strong>&#127970; Hotel:</strong> ' . htmlspecialchars($hotelName ?: 'Not specified');
+            if ($hotelLoc) $hotelSection .= ' &mdash; ' . htmlspecialchars($hotelLoc);
+            $hotelSection .= '</div>';
+        }
+
+        return [$flightSection, $hotelSection];
+    }
+
     /**
      * Rejection email template
      */

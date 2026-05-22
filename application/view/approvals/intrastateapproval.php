@@ -302,10 +302,135 @@
             <?php endif; ?>
         </div>
     </div>
+    <!-- In Progress — Driver Assigned -->
+    <?php
+    $inProgressRequests = isset($inProgressRequests) && is_array($inProgressRequests) ? $inProgressRequests : [];
+    $driversByState     = isset($driversByState)     && is_array($driversByState)     ? $driversByState     : [];
+    $allDrivers         = isset($allDrivers)         && is_array($allDrivers)         ? $allDrivers         : $availableDrivers;
+    if (!empty($inProgressRequests)):
+    ?>
+    <div class="card shadow-sm border-0 rounded-4 mt-4">
+        <div class="card-header-custom">
+            <i class="fas fa-truck me-2 text-primary"></i>
+            <strong>In Progress — Driver Assigned</strong>
+            <span class="badge bg-primary ms-2"><?= count($inProgressRequests) ?></span>
+        </div>
+        <div class="card-body p-0">
+            <?php foreach ($inProgressRequests as $trip):
+                $tripPassed  = strtotime($trip->trip_date) < strtotime('today');
+                $canEdit     = !$tripPassed;
+                $ipId        = $trip->id;
+                $tripDrivers = $driversByState[$trip->vehicle_location_state_id ?? 0] ?? $allDrivers;
+            ?>
+            <div class="border-bottom p-3">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    <div>
+                        <span class="fw-bold">#<?= $ipId ?></span>
+                        <span class="ms-2"><?= htmlspecialchars(explode('@', $trip->staff_email)[0]) ?></span>
+                        <small class="text-muted ms-2"><?= htmlspecialchars($trip->staff_phone ?? '') ?></small>
+                        <div class="text-muted small mt-1">
+                            <i class="fas fa-map-marker-alt me-1"></i><?= htmlspecialchars($trip->trip_destination ?? '') ?>
+                            &mdash; <?= date('M d, Y', strtotime($trip->trip_date)) ?>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <div class="text-success small">
+                            <i class="fas fa-user-check me-1"></i>
+                            <strong><?= htmlspecialchars($trip->driver_name ?? $trip->driver_email ?? '—') ?></strong>
+                            <?php if ($trip->driver_phone ?? null): ?>
+                                <span class="text-muted">(<?= htmlspecialchars($trip->driver_phone) ?>)</span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ($canEdit): ?>
+                        <button class="btn btn-sm btn-warning" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#intraedit_<?= $ipId ?>"
+                            title="Change driver">
+                            <i class="fas fa-edit me-1"></i> Edit
+                        </button>
+                        <?php endif; ?>
+                        <button class="btn btn-sm btn-success"
+                            onclick="confirmIntraComplete(<?= $ipId ?>, '<?= htmlspecialchars(addslashes($trip->trip_destination ?? '')) ?>')">
+                            <i class="fas fa-flag-checkered me-1"></i> Complete
+                        </button>
+                    </div>
+                </div>
+
+                <?php if ($canEdit): ?>
+                <div class="collapse mt-3" id="intraedit_<?= $ipId ?>">
+                    <div class="p-3 rounded" style="background:#fffdf5;border:1px solid #ffe082;">
+                        <h6 class="fw-bold text-warning mb-2"><i class="fas fa-edit me-1"></i> Update Driver — Trip #<?= $ipId ?></h6>
+                        <form method="POST" action="<?= URL ?>intrastate/assignDriver/<?= $ipId ?>"
+                              onsubmit="return confirmIntraUpdate(event, this)">
+                            <div class="d-flex gap-2 align-items-end flex-wrap">
+                                <div style="min-width:260px;">
+                                    <label class="form-label small fw-semibold mb-1">New Driver</label>
+                                    <select name="driver_id" class="form-select form-select-sm" required>
+                                        <option value="">— Select Driver —</option>
+                                        <?php foreach ($tripDrivers as $d):
+                                            $dId    = is_object($d) ? $d->id    : ($d['id']    ?? 0);
+                                            $dName  = is_object($d) ? ($d->name  ?? '') : ($d['name']  ?? '');
+                                            $dPhone = is_object($d) ? ($d->phone ?? '') : ($d['phone'] ?? '');
+                                            $sel    = ($trip->assigned_driver_id == $dId) ? 'selected' : '';
+                                        ?>
+                                        <option value="<?= $dId ?>" <?= $sel ?>><?= htmlspecialchars($dName) ?> — <?= htmlspecialchars($dPhone) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-warning btn-sm fw-bold">
+                                    <i class="fas fa-save me-1"></i> Save & Notify Requester
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm"
+                                    data-bs-toggle="collapse" data-bs-target="#intraedit_<?= $ipId ?>">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    function confirmIntraUpdate(event, form) {
+        event.preventDefault();
+        const sel = form.querySelector('select[name="driver_id"]');
+        if (!sel.value) {
+            Swal.fire({ title: 'No Driver Selected', icon: 'warning', confirmButtonText: 'OK' });
+            return false;
+        }
+        Swal.fire({
+            title: 'Update Driver?',
+            html: 'The requester will receive an email about the change.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#e67e22',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, Update & Notify'
+        }).then(r => { if (r.isConfirmed) form.submit(); });
+        return false;
+    }
+
+    function confirmIntraComplete(id, dest) {
+        Swal.fire({
+            title: 'Mark as Completed?',
+            html: `Mark trip <strong>#${id}</strong> to <strong>${dest}</strong> as completed?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#28a745',
+            confirmButtonText: 'Yes, Complete'
+        }).then(r => {
+            if (r.isConfirmed) {
+                const f = document.createElement('form');
+                f.method = 'POST'; f.action = '<?= URL ?>intrastate/complete/' + id;
+                document.body.appendChild(f); f.submit();
+            }
+        });
+    }
+
     function confirmAssignment(event, form) {
         event.preventDefault();
         

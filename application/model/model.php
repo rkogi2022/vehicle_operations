@@ -1542,6 +1542,18 @@ class Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    // Get drivers assigned to a specific geographic state (via ea_state_driver)
+    public function getDriversByStateId($state_id) {
+        $sql = "SELECT d.* FROM driver d
+                INNER JOIN ea_state_driver esd ON d.id = esd.driver_id
+                INNER JOIN ea_state es ON esd.ea_state_id = es.id
+                WHERE es.state_id = ?
+                ORDER BY d.name";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$state_id]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
     // Calculate total nights between two dates
     public function calculateTotalNights($start_date, $end_date) {
         $start = new DateTime($start_date);
@@ -1774,18 +1786,18 @@ class Model
                 a2.name as requester_return_airline,
                 a3.name as operations_departure_airline,
                 a4.name as operations_return_airline,
-                h.name as hotel_name_from_vendor, h.state_id as hotel_state_id
+                h.name  as hotel_name_from_vendor,  h.state_id as hotel_state_id
                 FROM interstate_request ir
                 JOIN state vs ON ir.vehicle_location_state_id = vs.id
                 JOIN state ars ON ir.arrival_location_state_id = ars.id
                 JOIN funder_codes fc ON ir.funder_code_id = fc.id
-                LEFT JOIN driver d ON ir.assigned_driver_id = d.id
+                LEFT JOIN driver d  ON ir.assigned_driver_id = d.id
                 LEFT JOIN driver rd ON ir.return_assigned_driver_id = rd.id
                 LEFT JOIN airlines a1 ON ir.requester_departure_flight_airline_id = a1.id
                 LEFT JOIN airlines a2 ON ir.requester_return_flight_airline_id = a2.id
                 LEFT JOIN airlines a3 ON ir.operations_departure_flight_airline_id = a3.id
                 LEFT JOIN airlines a4 ON ir.operations_return_flight_airline_id = a4.id
-                LEFT JOIN hotel h ON ir.hotel_id = h.id
+                LEFT JOIN hotel h  ON ir.hotel_id = h.id
                 WHERE ir.id = ?";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$id]);
@@ -2355,14 +2367,14 @@ class Model
                 CONCAT(SUBSTRING_INDEX(ir.supervisor_email, '@', 1)) as supervisor_name,
                 a1.name as requester_departure_airline,
                 a2.name as requester_return_airline,
-                h.name as hotel_name_from_vendor
+                h.name  as hotel_name_from_vendor
                 FROM interstate_request ir
                 JOIN state vs ON ir.vehicle_location_state_id = vs.id
                 JOIN state ars ON ir.arrival_location_state_id = ars.id
                 JOIN funder_codes fc ON ir.funder_code_id = fc.id
                 LEFT JOIN airlines a1 ON ir.requester_departure_flight_airline_id = a1.id
                 LEFT JOIN airlines a2 ON ir.requester_return_flight_airline_id = a2.id
-                LEFT JOIN hotel h ON ir.hotel_id = h.id
+                LEFT JOIN hotel h  ON ir.hotel_id = h.id
                 WHERE ir.status = 'security_approved'
                 AND (ir.assigned_driver_id IS NULL OR ir.assigned_driver_id = 0)
                 ORDER BY ir.trip_date ASC";
@@ -2382,18 +2394,28 @@ class Model
                 vs.name as vehicle_location_state_name, vs.code as vehicle_location_code,
                 ars.name as arrival_state_name,
                 fc.name as funder_code_name,
-                d.email as driver_email, d.phone as driver_phone,
-                d.name as driver_name,
-                rd.email as return_driver_email, rd.phone as return_driver_phone,
-                rd.name as return_driver_name
+                d.email as driver_email, d.phone as driver_phone, d.name as driver_name,
+                rd.email as return_driver_email, rd.phone as return_driver_phone, rd.name as return_driver_name,
+                a1.name as requester_departure_airline,
+                a2.name as requester_return_airline,
+                a3.name as ops_departure_airline_name,
+                a4.name as ops_return_airline_name,
+                h.name  as hotel_name_from_vendor,
+                hs.name as hotel_state_name
                 FROM interstate_request ir
                 JOIN state vs ON ir.vehicle_location_state_id = vs.id
                 JOIN state ars ON ir.arrival_location_state_id = ars.id
                 JOIN funder_codes fc ON ir.funder_code_id = fc.id
-                LEFT JOIN driver d ON ir.assigned_driver_id = d.id
+                LEFT JOIN driver d  ON ir.assigned_driver_id = d.id
                 LEFT JOIN driver rd ON ir.return_assigned_driver_id = rd.id
-                WHERE ir.status = 'security_approved' 
-                AND ir.assigned_driver_id IS NOT NULL 
+                LEFT JOIN airlines a1 ON ir.requester_departure_flight_airline_id = a1.id
+                LEFT JOIN airlines a2 ON ir.requester_return_flight_airline_id = a2.id
+                LEFT JOIN airlines a3 ON ir.operations_departure_flight_airline_id = a3.id
+                LEFT JOIN airlines a4 ON ir.operations_return_flight_airline_id = a4.id
+                LEFT JOIN hotel h  ON ir.hotel_id = h.id
+                LEFT JOIN state hs ON h.state_id  = hs.id
+                WHERE ir.status = 'security_approved'
+                AND ir.assigned_driver_id IS NOT NULL
                 AND ir.assigned_driver_id != 0
                 ORDER BY ir.trip_date ASC";
         $stmt = $this->db->prepare($sql);

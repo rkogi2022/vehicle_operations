@@ -99,7 +99,7 @@
                                        value="<?= isset($request) ? htmlspecialchars($request->destination_city) : '' ?>" required>
                             </div>
                             <div class="col-md-8 mb-3">
-                                <label for="trip_destination" class="form-label">Final Destination Address <span class="text-danger">*</span></label>
+                                <label for="trip_destination" class="form-label">Trip Destination  <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="trip_destination" name="trip_destination" 
                                        value="<?= isset($request) ? htmlspecialchars($request->trip_destination) : '' ?>" required>
                             </div>
@@ -166,109 +166,6 @@
                     </div>
                 </div>
                 
-                <!-- Mode of Travel -->
-                <div class="card mb-3">
-                    <div class="card-header bg-light">
-                        <h6 class="mb-0">Mode of Travel</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-12 mb-3">
-                                <label class="form-label">Select Mode of Travel <span class="text-danger">*</span></label>
-                                <div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="mode_of_travel" id="mode_road" value="road" 
-                                            <?= (!isset($request) || $request->mode_of_travel == 'road') ? 'checked' : '' ?> required>
-                                        <label class="form-check-label" for="mode_road">Road</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="mode_of_travel" id="mode_air" value="air"
-                                            <?= (isset($request) && $request->mode_of_travel == 'air') ? 'checked' : '' ?>>
-                                        <label class="form-check-label" for="mode_air">Air</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="mode_of_travel" id="mode_both" value="both"
-                                            <?= (isset($request) && $request->mode_of_travel == 'both') ? 'checked' : '' ?>>
-                                        <label class="form-check-label" for="mode_both">Both (Road & Air)</label>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Airport Pickup (shown when mode includes air) -->
-                <div class="card mb-3" id="airportPickupCard" style="display: none;">
-                    <div class="card-header bg-light">
-                        <h6 class="mb-0">Airport Pickup Details</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-12 mb-3">
-                                <label class="form-label">Do you require airport pickup?</label>
-                                <div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="require_airport_pickup" id="airport_pickup_no" value="no" checked>
-                                        <label class="form-check-label" for="airport_pickup_no">No</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="require_airport_pickup" id="airport_pickup_yes" value="yes">
-                                        <label class="form-check-label" for="airport_pickup_yes">Yes</label>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="airportPickupDetails" style="display: none;">
-                            <div class="row">
-                                <div class="col-md-12 mb-3">
-                                    <label for="airport_pickup_dropoff_destination" class="form-label">Drop-off Destination after Pickup</label>
-                                    <input type="text" class="form-control" id="airport_pickup_dropoff_destination" name="airport_pickup_dropoff_destination" 
-                                           value="<?= isset($request) ? htmlspecialchars($request->airport_pickup_dropoff_destination) : '' ?>">
-                                    <small class="text-muted">Where should you be dropped off after airport pickup?</small>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Flight Details (filled by requester) -->
-                        <div id="requesterFlightDetails">
-                            <hr>
-                            <h6>Flight Details (To be filled by requester)</h6>
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="requester_departure_flight_airline_id" class="form-label">Departure Airline</label>
-                                    <select class="form-control" id="requester_departure_flight_airline_id" name="requester_departure_flight_airline_id">
-                                        <option value="">Select Airline</option>
-                                        <?php if (isset($airlines)): ?>
-                                            <?php foreach ($airlines as $airline): ?>
-                                                <option value="<?= $airline->id; ?>" 
-                                                    <?= (isset($request) && $request->requester_departure_flight_airline_id == $airline->id) ? 'selected' : '' ?>>
-                                                    <?= htmlspecialchars($airline->name); ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        <?php endif; ?>
-                                    </select>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="requester_return_flight_airline_id" class="form-label">Return Airline</label>
-                                    <select class="form-control" id="requester_return_flight_airline_id" name="requester_return_flight_airline_id">
-                                        <option value="">Select Airline</option>
-                                        <?php if (isset($airlines)): ?>
-                                            <?php foreach ($airlines as $airline): ?>
-                                                <option value="<?= $airline->id; ?>" 
-                                                    <?= (isset($request) && $request->requester_return_flight_airline_id == $airline->id) ? 'selected' : '' ?>>
-                                                    <?= htmlspecialchars($airline->name); ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        <?php endif; ?>
-                                    </select>
-                                </div>
-                            </div>
-                            <small class="text-muted">Note: Flight schedules and details will be confirmed by operations team during approval.</small>
-                        </div>
-                    </div>
-                </div>
-                
                 <!-- Hotel Accommodation -->
                 <div class="card mb-3">
                     <div class="card-header bg-light">
@@ -290,13 +187,13 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div id="hotelDetails" style="display: none;">
                             <div class="alert alert-info">
                                 <i class="fas fa-info-circle"></i> Hotels will be filtered based on your selected <strong>Arrival State</strong>.
                                 <span id="selectedArrivalState"></span>
                             </div>
-                            
+
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="hotel_option" class="form-label">Hotel Selection <span class="text-danger">*</span></label>
@@ -307,7 +204,7 @@
                                     </select>
                                 </div>
                             </div>
-                            
+
                             <div id="existingHotelSection" style="display: none;">
                                 <div class="row">
                                     <div class="col-md-8 mb-3">
@@ -329,17 +226,17 @@
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div id="otherHotelSection" style="display: none;">
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label for="hotel_other_name" class="form-label">Hotel Name <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="hotel_other_name" name="hotel_other_name" 
+                                        <input type="text" class="form-control" id="hotel_other_name" name="hotel_other_name"
                                                value="<?= isset($request) ? htmlspecialchars($request->hotel_other_name) : '' ?>">
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label for="hotel_other_location" class="form-label">Hotel Location <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="hotel_other_location" name="hotel_other_location" 
+                                        <input type="text" class="form-control" id="hotel_other_location" name="hotel_other_location"
                                                value="<?= isset($request) ? htmlspecialchars($request->hotel_location) : '' ?>">
                                     </div>
                                 </div>
@@ -360,6 +257,109 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mode of Travel -->
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">Mode of Travel</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Select Mode of Travel <span class="text-danger">*</span></label>
+                                <div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="mode_of_travel" id="mode_road" value="road"
+                                            <?= (!isset($request) || $request->mode_of_travel == 'road') ? 'checked' : '' ?> required>
+                                        <label class="form-check-label" for="mode_road">Road</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="mode_of_travel" id="mode_air" value="air"
+                                            <?= (isset($request) && $request->mode_of_travel == 'air') ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="mode_air">Air</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="mode_of_travel" id="mode_both" value="both"
+                                            <?= (isset($request) && $request->mode_of_travel == 'both') ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="mode_both">Both (Road & Air)</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Airport Pickup (shown when mode includes air) -->
+                <div class="card mb-3" id="airportPickupCard" style="display: none;">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">Airport Pickup Details</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Do you require airport pickup?</label>
+                                <div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="require_airport_pickup" id="airport_pickup_no" value="no" checked>
+                                        <label class="form-check-label" for="airport_pickup_no">No</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="require_airport_pickup" id="airport_pickup_yes" value="yes">
+                                        <label class="form-check-label" for="airport_pickup_yes">Yes</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="airportPickupDetails" style="display: none;">
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label for="airport_pickup_dropoff_destination" class="form-label">Drop-off Destination after Pickup</label>
+                                    <input type="text" class="form-control" id="airport_pickup_dropoff_destination" name="airport_pickup_dropoff_destination"
+                                           value="<?= isset($request) ? htmlspecialchars($request->airport_pickup_dropoff_destination) : '' ?>">
+                                    <small class="text-muted">Where should you be dropped off after airport pickup?</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Flight Details (filled by requester) -->
+                        <div id="requesterFlightDetails">
+                            <hr>
+                            <h6>Flight Details (To be filled by requester)</h6>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="requester_departure_flight_airline_id" class="form-label">Departure Airline</label>
+                                    <select class="form-control" id="requester_departure_flight_airline_id" name="requester_departure_flight_airline_id">
+                                        <option value="">Select Airline</option>
+                                        <?php if (isset($airlines)): ?>
+                                            <?php foreach ($airlines as $airline): ?>
+                                                <option value="<?= $airline->id; ?>"
+                                                    <?= (isset($request) && $request->requester_departure_flight_airline_id == $airline->id) ? 'selected' : '' ?>>
+                                                    <?= htmlspecialchars($airline->name); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="requester_return_flight_airline_id" class="form-label">Return Airline</label>
+                                    <select class="form-control" id="requester_return_flight_airline_id" name="requester_return_flight_airline_id">
+                                        <option value="">Select Airline</option>
+                                        <?php if (isset($airlines)): ?>
+                                            <?php foreach ($airlines as $airline): ?>
+                                                <option value="<?= $airline->id; ?>"
+                                                    <?= (isset($request) && $request->requester_return_flight_airline_id == $airline->id) ? 'selected' : '' ?>>
+                                                    <?= htmlspecialchars($airline->name); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </select>
+                                </div>
+                            </div>
+                            <small class="text-muted">Note: Flight schedules and details will be confirmed by operations team during approval.</small>
                         </div>
                     </div>
                 </div>

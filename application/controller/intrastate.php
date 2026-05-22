@@ -144,20 +144,30 @@ class intrastate extends Controller
         
         // Get requests awaiting driver assignment (security_approved with no driver assigned)
         $pendingDriverRequests = $this->model->getIntrastateRequestsAwaitingDriver();
-        
+
         // Get requests with driver assigned but not yet completed
-        $pendingCompletionRequests = $this->model->getIntrastateRequestsInProgress();
-        
-        // Get all available drivers for assignment
-        $availableDrivers = $this->model->getAllAvailableDrivers();
-        
+        $inProgressRequests = $this->model->getIntrastateRequestsInProgress();
+
+        // Get all available drivers; build per-state lists for awaiting + in-progress
+        $allDrivers = $this->model->getAllAvailableDrivers();
+        $availableDrivers = $allDrivers; // kept for awaiting section compatibility
+
+        $driversByState = [];
+        foreach (array_merge($pendingDriverRequests, $inProgressRequests) as $req) {
+            $sid = $req->vehicle_location_state_id ?? null;
+            if ($sid && !isset($driversByState[$sid])) {
+                $stateDrivers = $this->model->getDriversByStateId($sid);
+                $driversByState[$sid] = !empty($stateDrivers) ? $stateDrivers : $allDrivers;
+            }
+        }
+
         // Get statistics
         $stats = [
-            'awaiting_driver' => count($pendingDriverRequests),
-            'in_progress' => count($pendingCompletionRequests),
-            'completed_today' => $this->model->getCompletedRequestsCountToday()
+            'awaiting_driver'  => count($pendingDriverRequests),
+            'in_progress'      => count($inProgressRequests),
+            'completed_today'  => $this->model->getCompletedRequestsCountToday(),
         ];
-        
+
         require APP . 'view/_templates/header.php';
         require APP . 'view/approvals/intrastateapproval.php';
     }
@@ -554,23 +564,33 @@ class intrastate extends Controller
         
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $driver_id = $_POST['driver_id'];
-            
+
             if (empty($driver_id)) {
                 $_SESSION['error'] = "Please select a driver";
                 header('Location: ' . URL . 'intrastate/operationsDashboard');
                 exit();
             }
-            
+
+            $existing = $this->model->getIntrastateRequestById($id);
+            $isUpdate = !empty($existing->assigned_driver_id);
+
             $result = $this->model->assignDriverToRequest($id, $driver_id);
-            
+
             if ($result) {
                 $request = $this->model->getIntrastateRequestById($id);
-                $this->sendDriverAssignmentEmail($request, $driver_id);
-                $_SESSION['success'] = "Driver assigned successfully";
+                if ($isUpdate) {
+                    $emailSent = $this->sendIntrastateTripUpdateEmail($request);
+                    $_SESSION['success'] = $emailSent
+                        ? "Driver updated. The requester has been notified by email."
+                        : "Driver updated. Note: email notification could not be sent.";
+                } else {
+                    $this->sendDriverAssignmentEmail($request, $driver_id);
+                    $_SESSION['success'] = "Driver assigned successfully. The requester has been notified.";
+                }
             } else {
                 $_SESSION['error'] = "Failed to assign driver";
             }
-            
+
             header('Location: ' . URL . 'intrastate/operationsDashboard');
             exit();
         }
@@ -1152,13 +1172,62 @@ class intrastate extends Controller
     {
         $staffName = explode('@', $request->staff_email)[0];
         $driver = $this->model->getDriverById($driver_id);
-        
+
         $subject = "Driver Assigned for Trip - " . $request->trip_destination;
         $body = $this->getDriverAssignmentEmailTemplate($request, $staffName, $driver);
-        
+
         return $this->sendEmail($request->staff_email, $subject, $body);
     }
-    
+
+    private function sendIntrastateTripUpdateEmail($request)
+    {
+        $staffName   = explode('@', $request->staff_email)[0];
+        $driverName  = $request->driver_name  ?? ($request->approved_driver_email ? explode('@', $request->approved_driver_email)[0] : 'N/A');
+        $driverPhone = $request->driver_phone ?? '';
+        $driverEmail = $request->driver_email ?? '';
+
+        $pickupNote = ($request->need_driver_pickup === 'yes' && $request->pickup_time)
+            ? '<p><strong>Driver Pickup Time:</strong> ' . $request->pickup_time . ' at ' . htmlspecialchars($request->pickup_location) . '</p>'
+            : '';
+
+        $body = '<!DOCTYPE html><html><head><style>
+            body{font-family:Arial,sans-serif;line-height:1.6;}
+            .container{max-width:600px;margin:0 auto;padding:20px;}
+            .header{background:#e67e22;color:white;padding:15px;text-align:center;border-radius:5px 5px 0 0;}
+            .banner{background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:10px 14px;margin-bottom:14px;}
+            .content{background:#f8f9fa;padding:20px;border:1px solid #ddd;border-top:none;}
+            .details{background:white;padding:15px;margin:15px 0;border-radius:5px;border-left:4px solid #e67e22;}
+            .driver-box{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 16px;margin:12px 0;}
+            .footer{text-align:center;padding:15px;font-size:12px;color:#666;}
+        </style></head><body>
+        <div class="container">
+            <div class="header"><h2>&#9888; Your Trip Driver Has Been Updated</h2></div>
+            <div class="content">
+                <div class="banner"><strong>&#9888; Note:</strong> The operations team has updated the driver assignment for your upcoming trip.</div>
+                <p>Dear ' . htmlspecialchars($staffName) . ',</p>
+                <p>The assigned driver for your trip to <strong>' . htmlspecialchars($request->trip_destination) . '</strong> has been updated.</p>
+                <div class="driver-box">
+                    <strong>&#128663; Updated Driver</strong><br>
+                    ' . ($driverName  ? 'Name: '  . htmlspecialchars($driverName)  . '<br>' : '') . '
+                    ' . ($driverEmail ? 'Email: ' . htmlspecialchars($driverEmail) . '<br>' : '') . '
+                    ' . ($driverPhone ? 'Phone: ' . htmlspecialchars($driverPhone)             : '') . '
+                </div>
+                <div class="details">
+                    <h4>Trip Details:</h4>
+                    <p><strong>Destination:</strong> ' . htmlspecialchars($request->trip_destination) . '</p>
+                    <p><strong>Trip Date:</strong> ' . date('F j, Y', strtotime($request->trip_date)) . '</p>
+                    <p><strong>Pickup Location:</strong> ' . htmlspecialchars($request->pickup_location ?? '') . '</p>
+                    ' . $pickupNote . '
+                </div>
+                <p>If you have any questions, please contact the operations team.</p>
+            </div>
+            <div class="footer"><p>This is an automated message. Please do not reply.</p></div>
+        </div></body></html>';
+
+        $subject = "[UPDATED] Driver Changed for Your Trip — " . $request->trip_destination;
+        return $this->sendEmail($request->staff_email, $subject, $body);
+    }
+
     /**
      * Generate approval token
      */
