@@ -171,7 +171,7 @@
                             <td class="small"><?= $fromLocation ?></td>
                             <td class="small"><?= $destination ?></td>
                             <td class="small"><?= date('M d, Y', strtotime($trip->trip_date)) ?></td>
-                            <td class="small"><?= date('M d, Y', strtotime($trip->return_date)) ?></td>
+                            <td class="small"><?= $type === 'intrastate' ? '<span class="text-muted fst-italic">N/A (intrastate)</span>' : (isset($trip->return_date) && $trip->return_date ? date('M d, Y', strtotime($trip->return_date)) : '—') ?></td>
                             <td class="small"><?= htmlspecialchars($trip->funder_code_name ?? '—') ?></td>
                             <td><span class="badge bg-<?= $badgeClass ?>" style="font-size:0.7rem;"><?= $statusLabel ?></span></td>
                             <td class="small">
