@@ -235,7 +235,7 @@ class Interstate extends Controller
                 'arrival_location_state_id' => $_POST['arrival_location_state_id'],
                 'destination_city' => trim($_POST['destination_city']),
                 'pickup_location' => trim($_POST['pickup_location']),
-                'trip_destination' => trim($_POST['trip_destination']),
+                'trip_destination' => trim($_POST['destination_city']),
                 'trip_destination_time' => $_POST['trip_destination_time'],
                 'route_information' => trim($_POST['route_information']),
                 'mode_of_travel' => $_POST['mode_of_travel'],

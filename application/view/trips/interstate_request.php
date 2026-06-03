@@ -93,27 +93,14 @@
                         </div>
                         
                         <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <label for="destination_city" class="form-label">Destination City/Town <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="destination_city" name="destination_city" 
-                                       value="<?= isset($request) ? htmlspecialchars($request->destination_city) : '' ?>" required>
-                            </div>
-                            <div class="col-md-8 mb-3">
-                                <label for="trip_destination" class="form-label">Trip Destination  <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="trip_destination" name="trip_destination" 
-                                       value="<?= isset($request) ? htmlspecialchars($request->trip_destination) : '' ?>" required>
-                            </div>
-                        </div>
-                        
-                        <div class="row">
                             <div class="col-md-3 mb-3">
                                 <label for="trip_date" class="form-label">Trip Date <span class="text-danger">*</span></label>
-                                <input type="date" class="form-control" id="trip_date" name="trip_date" 
+                                <input type="date" class="form-control" id="trip_date" name="trip_date"
                                        value="<?= isset($request) ? $request->trip_date : '' ?>" required>
                             </div>
                             <div class="col-md-3 mb-3">
                                 <label for="return_date" class="form-label">Return Date <span class="text-danger">*</span></label>
-                                <input type="date" class="form-control" id="return_date" name="return_date" 
+                                <input type="date" class="form-control" id="return_date" name="return_date"
                                        value="<?= isset($request) ? $request->return_date : '' ?>" required>
                             </div>
                             <div class="col-md-2 mb-3">
@@ -122,17 +109,25 @@
                             </div>
                             <div class="col-md-4 mb-3">
                                 <label for="trip_destination_time" class="form-label">Destination Arrival Time <span class="text-danger">*</span></label>
-                                <input type="time" class="form-control" id="trip_destination_time" name="trip_destination_time" 
+                                <input type="time" class="form-control" id="trip_destination_time" name="trip_destination_time"
                                        value="<?= isset($request) ? $request->trip_destination_time : '' ?>" required>
                             </div>
                         </div>
-                        
+
                         <div class="row">
-                            <div class="col-md-6 mb-3">
+                            <div class="col-md-4 mb-3">
                                 <label for="pickup_location" class="form-label">Pickup Location <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="pickup_location" name="pickup_location" 
+                                <input type="text" class="form-control" id="pickup_location" name="pickup_location"
                                        value="<?= isset($request) ? htmlspecialchars($request->pickup_location) : '' ?>" required>
                             </div>
+                            <div class="col-md-8 mb-3">
+                                <label for="destination_city" class="form-label">Trip Destination <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="destination_city" name="destination_city"
+                                       value="<?= isset($request) ? htmlspecialchars($request->destination_city) : '' ?>" required>
+                            </div>
+                        </div>
+
+                        <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="funder_code_id" class="form-label">Funder Code <span class="text-danger">*</span></label>
                                 <select class="form-control" id="funder_code_id" name="funder_code_id" required>
@@ -449,39 +444,7 @@
                     </div>
                 </div>
                 
-                <!-- Driver Pickup -->
-                <div class="card mb-3">
-                    <div class="card-header bg-light">
-                        <h6 class="mb-0">Driver Pickup</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-12 mb-3">
-                                <label class="form-label">Do you need a driver for pickup?</label>
-                                <div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="need_driver_pickup" id="pickup_no" value="no" checked>
-                                        <label class="form-check-label" for="pickup_no">No</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="need_driver_pickup" id="pickup_yes" value="yes">
-                                        <label class="form-check-label" for="pickup_yes">Yes</label>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="pickupTimeSection" style="display: none;">
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="pickup_time" class="form-label">Pickup Time</label>
-                                    <input type="time" class="form-control" id="pickup_time" name="pickup_time" 
-                                           value="<?= isset($request) ? $request->pickup_time : '' ?>">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <input type="hidden" name="need_driver_pickup" value="no">
                 
                 <!-- Form Buttons -->
                 <div class="text-end">
@@ -763,22 +726,6 @@ document.addEventListener('DOMContentLoaded', function() {
     overtimeYes.addEventListener('change', toggleOvertime);
     overtimeNo.addEventListener('change', toggleOvertime);
     
-    // Driver pickup toggle
-    const pickupYes = document.getElementById('pickup_yes');
-    const pickupNo = document.getElementById('pickup_no');
-    const pickupTimeSection = document.getElementById('pickupTimeSection');
-    
-    function togglePickup() {
-        if (pickupYes.checked) {
-            pickupTimeSection.style.display = 'block';
-        } else {
-            pickupTimeSection.style.display = 'none';
-        }
-    }
-    
-    pickupYes.addEventListener('change', togglePickup);
-    pickupNo.addEventListener('change', togglePickup);
-    
     // Pre-fill values if editing
     <?php if (isset($request)): ?>
         if (document.querySelector('input[name="mode_of_travel"][value="<?= $request->mode_of_travel ?>"]')) {
@@ -797,10 +744,6 @@ document.addEventListener('DOMContentLoaded', function() {
             document.querySelector('input[name="driver_overtime"][value="<?= $request->driver_overtime ?>"]').checked = true;
             toggleOvertime();
         }
-        if (document.querySelector('input[name="need_driver_pickup"][value="<?= $request->need_driver_pickup ?>"]')) {
-            document.querySelector('input[name="need_driver_pickup"][value="<?= $request->need_driver_pickup ?>"]').checked = true;
-            togglePickup();
-        }
         if ('<?= $request->hotel_id ?>') {
             hotelOption.value = 'existing';
             hotelOption.dispatchEvent(new Event('change'));
@@ -816,9 +759,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if ('<?= $request->overtime_manager_email ?>') {
             document.getElementById('overtime_manager_email').value = '<?= $request->overtime_manager_email ?>';
-        }
-        if ('<?= $request->pickup_time ?>') {
-            document.getElementById('pickup_time').value = '<?= $request->pickup_time ?>';
         }
         // Pre-populate approver fields from saved request data instead of re-fetching
         (function() {
