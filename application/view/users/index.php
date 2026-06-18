@@ -104,13 +104,38 @@
         <?php unset($_SESSION['error']); ?>
     <?php endif; ?>
 
+    <?php if (isset($_SESSION['import_results'])): ?>
+        <?php $ir = $_SESSION['import_results']; unset($_SESSION['import_results']); ?>
+        <div class="alert alert-info alert-dismissible fade show" role="alert">
+            <strong><i class="fas fa-file-import me-1"></i> Import complete:</strong>
+            <?= $ir['imported'] ?> imported, <?= $ir['skipped'] ?> skipped (duplicates).
+            <?php if (!empty($ir['errors'])): ?>
+                <hr class="my-2">
+                <ul class="mb-0 ps-3">
+                    <?php foreach ($ir['errors'] as $e): ?>
+                        <li><?= htmlspecialchars($e) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
     <!-- Users Section -->
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="fas fa-users me-1"></i> Users List</span>
-            <button class="btn btn-primary btn-sm" onclick="openUserModal('add')">
-                <i class="fas fa-plus"></i> Add User
-            </button>
+            <div class="d-flex gap-2">
+                <a href="<?= URL ?>users/downloadTemplate" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-download"></i> Template
+                </a>
+                <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
+                    <i class="fas fa-file-import"></i> Import
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="openUserModal('add')">
+                    <i class="fas fa-plus"></i> Add User
+                </button>
+            </div>
         </div>
 
         <div class="card-body table-responsive">
@@ -228,6 +253,41 @@
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary">Save User</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importModalLabel"><i class="fas fa-file-import me-1"></i> Bulk Import Users</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="<?= URL ?>users/bulkImport" method="POST" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <div class="alert alert-info py-2">
+                        <i class="fas fa-info-circle"></i>
+                        Upload a CSV file. <a href="<?= URL ?>users/downloadTemplate" class="alert-link">Download template</a> to see the required format.
+                        <ul class="mt-2 mb-0 small">
+                            <li>Columns: <strong>email, password, role, country, state, department</strong></li>
+                            <li>Role must be: <code>staff</code>, <code>admin</code>, or <code>super_admin</code></li>
+                            <li>Country, state, department — use the full name (e.g. Nigeria, Lagos, Finance)</li>
+                            <li>Duplicate emails are skipped automatically</li>
+                        </ul>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">CSV File</label>
+                        <input type="file" name="import_file" class="form-control" accept=".csv" required>
+                        <div class="form-text">Save your Excel file as CSV (comma-separated) before uploading.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success"><i class="fas fa-upload me-1"></i> Import</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 </div>
             </form>

@@ -420,13 +420,43 @@ class Model
      */
     public function emailExists($email)
     {
-        $sql = "SELECT COUNT(*) as count FROM staff_login WHERE email = :email";
+        $sql = "SELECT COUNT(*) as count FROM staff_login WHERE LOWER(email) = LOWER(:email)";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([':email' => $email]);
         $result = $stmt->fetch(PDO::FETCH_OBJ);
         return $result->count > 0;
     }
-    
+
+    public function getCountryByName($name)
+    {
+        $sql = "SELECT * FROM country WHERE LOWER(name) = LOWER(:name) LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':name' => trim($name)]);
+        return $stmt->fetch(PDO::FETCH_OBJ);
+    }
+
+    public function getStateByName($name, $country_id = null)
+    {
+        if ($country_id) {
+            $sql = "SELECT * FROM state WHERE LOWER(name) = LOWER(:name) AND country_id = :cid LIMIT 1";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':name' => trim($name), ':cid' => $country_id]);
+        } else {
+            $sql = "SELECT * FROM state WHERE LOWER(name) = LOWER(:name) LIMIT 1";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':name' => trim($name)]);
+        }
+        return $stmt->fetch(PDO::FETCH_OBJ);
+    }
+
+    public function getDepartmentByName($name)
+    {
+        $sql = "SELECT * FROM departments WHERE LOWER(name) = LOWER(:name) LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':name' => trim($name)]);
+        return $stmt->fetch(PDO::FETCH_OBJ);
+    }
+
     /**
      * Get staff by ID
      * @param int $id Staff ID

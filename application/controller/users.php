@@ -209,6 +209,163 @@ class users extends Controller
     }
 
     /**
+     * Download CSV template for bulk user import
+     */
+    public function downloadTemplate()
+    {
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="user_import_template.csv"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['email', 'password', 'role', 'country', 'state', 'department']);
+        fputcsv($out, ['jane.doe@evidenceaction.org', 'Welcome@123', 'staff', 'Nigeria', 'Lagos', 'Finance']);
+        fclose($out);
+        exit();
+    }
+
+    /**
+     * Bulk import users from uploaded CSV file
+     */
+    public function bulkImport()
+    {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['import_file'])) {
+            header('Location: ' . URL . 'users');
+            exit();
+        }
+
+        $file = $_FILES['import_file'];
+
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $_SESSION['error'] = "File upload failed (error code " . $file['error'] . ").";
+            header('Location: ' . URL . 'users');
+            exit();
+        }
+
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($ext !== 'csv') {
+            $_SESSION['error'] = "Only CSV files are accepted. Save your Excel file as CSV first.";
+            header('Location: ' . URL . 'users');
+            exit();
+        }
+
+        $handle = fopen($file['tmp_name'], 'r');
+        if (!$handle) {
+            $_SESSION['error'] = "Could not read the uploaded file.";
+            header('Location: ' . URL . 'users');
+            exit();
+        }
+
+        $imported = 0;
+        $skipped  = 0;
+        $errors   = [];
+        $rowNum   = 0;
+        $headers  = null;
+        $validRoles = ['staff', 'admin', 'super_admin'];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNum++;
+
+            if ($rowNum === 1) {
+                $headers = array_map('trim', array_map('strtolower', $row));
+                continue;
+            }
+
+            if (empty(array_filter($row))) continue;
+
+            $data = [];
+            foreach ($headers as $i => $h) {
+                $data[$h] = isset($row[$i]) ? trim($row[$i]) : '';
+            }
+
+            $email      = strtolower($data['email'] ?? '');
+            $password   = $data['password'] ?? '';
+            $role       = strtolower($data['role'] ?? 'staff');
+            $countryName = $data['country'] ?? '';
+            $stateName   = $data['state'] ?? '';
+            $deptName    = $data['department'] ?? '';
+
+            if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = "Row $rowNum: Invalid or missing email.";
+                continue;
+            }
+
+            if ($this->model->emailExists($email)) {
+                $skipped++;
+                continue;
+            }
+
+            if (!in_array($role, $validRoles)) {
+                $errors[] = "Row $rowNum ($email): Invalid role '$role'. Use: staff, admin, or super_admin.";
+                continue;
+            }
+
+            if (empty($password)) {
+                $errors[] = "Row $rowNum ($email): Password is required.";
+                continue;
+            }
+
+            $country_id = null;
+            if (!empty($countryName)) {
+                $country = $this->model->getCountryByName($countryName);
+                if (!$country) {
+                    $errors[] = "Row $rowNum ($email): Country '$countryName' not found.";
+                    continue;
+                }
+                $country_id = $country->id;
+            }
+
+            $state_id = null;
+            if (!empty($stateName)) {
+                $state = $this->model->getStateByName($stateName, $country_id);
+                if (!$state) {
+                    $label = $countryName ? "$stateName in $countryName" : $stateName;
+                    $errors[] = "Row $rowNum ($email): State '$label' not found.";
+                    continue;
+                }
+                $state_id = $state->id;
+            }
+
+            $dept_id = null;
+            if (!empty($deptName)) {
+                $dept = $this->model->getDepartmentByName($deptName);
+                if (!$dept) {
+                    $errors[] = "Row $rowNum ($email): Department '$deptName' not found.";
+                    continue;
+                }
+                $dept_id = $dept->id;
+            }
+
+            $result = $this->model->createStaff([
+                'email'         => $email,
+                'password'      => password_hash($password, PASSWORD_DEFAULT),
+                'role'          => $role,
+                'country_id'    => $country_id,
+                'state_id'      => $state_id,
+                'department_id' => $dept_id,
+            ]);
+
+            if ($result) {
+                $imported++;
+            } else {
+                $errors[] = "Row $rowNum ($email): Database insert failed.";
+            }
+        }
+
+        fclose($handle);
+
+        $_SESSION['import_results'] = [
+            'imported' => $imported,
+            'skipped'  => $skipped,
+            'errors'   => $errors,
+        ];
+
+        header('Location: ' . URL . 'users');
+        exit();
+    }
+
+    /**
      * Get user profile for profile card
      */
     public function getUserProfile()
