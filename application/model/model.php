@@ -1976,7 +1976,7 @@ class Model
     public function createInterstateRequest($data)
     {
         $sql = "INSERT INTO interstate_request (
-            staff_email, staff_phone, supervisor_email, vehicle_location_state_id,
+            staff_email, staff_phone, taf_approved, supervisor_email, vehicle_location_state_id,
             reviewer_email, co_reviewer_email, manager_email, security_manager_email,
             trip_date, return_date, total_nights, purpose, arrival_location_state_id,
             destination_city, pickup_location, trip_destination, trip_destination_time,
@@ -1986,7 +1986,7 @@ class Model
             funder_code_id, driver_overtime, trip_activity, reason_for_overtime,
             overtime_manager_email, need_driver_pickup, pickup_time, status, current_approval_level
         ) VALUES (
-            :staff_email, :staff_phone, :supervisor_email, :vehicle_location_state_id,
+            :staff_email, :staff_phone, :taf_approved, :supervisor_email, :vehicle_location_state_id,
             :reviewer_email, :co_reviewer_email, :manager_email, :security_manager_email,
             :trip_date, :return_date, :total_nights, :purpose, :arrival_location_state_id,
             :destination_city, :pickup_location, :trip_destination, :trip_destination_time,
@@ -2001,6 +2001,7 @@ class Model
         $result = $stmt->execute([
             ':staff_email' => $data['staff_email'],
             ':staff_phone' => $data['staff_phone'],
+            ':taf_approved' => $data['taf_approved'],
             ':supervisor_email' => $data['supervisor_email'],
             ':vehicle_location_state_id' => $data['vehicle_location_state_id'],
             ':reviewer_email' => $data['reviewer_email'],
@@ -2049,7 +2050,7 @@ class Model
     public function saveInterstateRequestDraft($data)
     {
         $sql = "INSERT INTO interstate_request (
-            staff_email, staff_phone, supervisor_email, vehicle_location_state_id,
+            staff_email, staff_phone, taf_approved, supervisor_email, vehicle_location_state_id,
             reviewer_email, co_reviewer_email, manager_email, security_manager_email,
             trip_date, return_date, total_nights, purpose, arrival_location_state_id,
             destination_city, pickup_location, trip_destination, trip_destination_time,
@@ -2059,7 +2060,7 @@ class Model
             funder_code_id, driver_overtime, trip_activity, reason_for_overtime,
             overtime_manager_email, need_driver_pickup, pickup_time, status, current_approval_level
         ) VALUES (
-            :staff_email, :staff_phone, :supervisor_email, :vehicle_location_state_id,
+            :staff_email, :staff_phone, :taf_approved, :supervisor_email, :vehicle_location_state_id,
             :reviewer_email, :co_reviewer_email, :manager_email, :security_manager_email,
             :trip_date, :return_date, :total_nights, :purpose, :arrival_location_state_id,
             :destination_city, :pickup_location, :trip_destination, :trip_destination_time,
@@ -2074,6 +2075,7 @@ class Model
         return $stmt->execute([
             ':staff_email' => $data['staff_email'],
             ':staff_phone' => $data['staff_phone'],
+            ':taf_approved' => $data['taf_approved'],
             ':supervisor_email' => $data['supervisor_email'],
             ':vehicle_location_state_id' => $data['vehicle_location_state_id'],
             ':reviewer_email' => $data['reviewer_email'],
@@ -2118,8 +2120,9 @@ class Model
      */
     public function updateInterstateRequest($id, $data)
     {
-        $sql = "UPDATE interstate_request SET 
+        $sql = "UPDATE interstate_request SET
                 staff_phone = :staff_phone,
+                taf_approved = :taf_approved,
                 supervisor_email = :supervisor_email,
                 vehicle_location_state_id = :vehicle_location_state_id,
                 trip_date = :trip_date,
@@ -3081,6 +3084,7 @@ class Model
     public function updatePendingInterstateRequest($id, $data) {
         $sql = "UPDATE interstate_request SET
                 staff_phone = :staff_phone,
+                taf_approved = :taf_approved,
                 supervisor_email = :supervisor_email,
                 vehicle_location_state_id = :vehicle_location_state_id,
                 reviewer_email = :reviewer_email,
@@ -3118,6 +3122,7 @@ class Model
         $stmt = $this->db->prepare($sql);
         return $stmt->execute([
             ':staff_phone'                            => $data['staff_phone'],
+            ':taf_approved'                           => $data['taf_approved'],
             ':supervisor_email'                       => $data['supervisor_email'],
             ':vehicle_location_state_id'              => $data['vehicle_location_state_id'],
             ':reviewer_email'                         => $data['reviewer_email'],

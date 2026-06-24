@@ -43,13 +43,30 @@
                                     <option value="">Select Supervisor</option>
                                     <?php if (isset($supervisors)): ?>
                                         <?php foreach ($supervisors as $supervisor): ?>
-                                            <option value="<?= htmlspecialchars($supervisor->email); ?>" 
+                                            <option value="<?= htmlspecialchars($supervisor->email); ?>"
                                                 <?= (isset($request) && $request->supervisor_email == $supervisor->email) ? 'selected' : '' ?>>
                                                 <?= htmlspecialchars(ucwords(str_replace(['.','_','-'],' ', explode('@',$supervisor->email)[0]))); ?> &mdash; <?= htmlspecialchars($supervisor->email); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     <?php endif; ?>
                                 </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Have you filled your TAF and received approval? <span class="text-danger">*</span></label>
+                                <div class="d-flex gap-4 mt-1">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="taf_approved" id="taf_yes" value="yes" required
+                                            <?= (isset($request) && $request->taf_approved == 'yes') ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="taf_yes">Yes</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="taf_approved" id="taf_no" value="no"
+                                            <?= (isset($request) && $request->taf_approved == 'no') || !isset($request) ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="taf_no">No</label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

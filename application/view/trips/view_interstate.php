@@ -308,6 +308,15 @@
                 <div class="card-body-modern">
                     <div class="contact-line"><i class="fas fa-envelope"></i> <?= htmlspecialchars($request->staff_email); ?></div>
                     <div class="contact-line"><i class="fas fa-phone-alt"></i> <?= htmlspecialchars($request->staff_phone); ?></div>
+                    <div class="contact-line">
+                        <i class="fas fa-file-signature"></i>
+                        <strong>TAF Filled & Approved:</strong>
+                        <?php if ($request->taf_approved == 'yes'): ?>
+                            <span class="badge bg-success ms-1">Yes</span>
+                        <?php else: ?>
+                            <span class="badge bg-danger ms-1">No</span>
+                        <?php endif; ?>
+                    </div>
                     <div class="contact-line"><i class="fas fa-user-tie"></i> <strong>Supervisor:</strong> <?= htmlspecialchars($request->supervisor_email); ?></div>
                 </div>
             </div>

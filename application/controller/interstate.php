@@ -65,8 +65,8 @@ class Interstate extends Controller
         $this->requireLogin();
         
         // Get dropdown data
-        $departure_states = $this->model->getStatesByCountry($_SESSION['country_id']); // departure: all states in user's country
-        $states = $this->model->getAllStates();                 // arrival state (all states)
+        $departure_states = $this->model->getStatesByCountry($_SESSION['country_id']);
+        $states = $this->model->getStatesByCountry($_SESSION['country_id']);
         $airlines = $this->model->getAllAirlines();
         $funder_codes = $this->model->getAllFunders();
         $hotels = $this->model->getHotelsWithStates();
@@ -109,8 +109,8 @@ class Interstate extends Controller
         }
 
         // Get dropdown data
-        $departure_states = $this->model->getStatesByCountry($_SESSION['country_id']); // departure: all states in user's country
-        $states = $this->model->getAllStates();                 // arrival state (all states)
+        $departure_states = $this->model->getStatesByCountry($_SESSION['country_id']);
+        $states = $this->model->getStatesByCountry($_SESSION['country_id']);
         $airlines = $this->model->getAllAirlines();
         $funder_codes = $this->model->getAllFunders();
         $hotels = $this->model->getHotelsWithStates();
@@ -253,6 +253,7 @@ class Interstate extends Controller
                 'trip_activity' => isset($_POST['driver_overtime']) && $_POST['driver_overtime'] == 'yes' ? trim($_POST['trip_activity']) : null,
                 'reason_for_overtime' => isset($_POST['driver_overtime']) && $_POST['driver_overtime'] == 'yes' ? trim($_POST['reason_for_overtime']) : null,
                 'overtime_manager_email' => isset($_POST['driver_overtime']) && $_POST['driver_overtime'] == 'yes' ? trim($_POST['overtime_manager_email']) : null,
+                'taf_approved' => $_POST['taf_approved'] ?? 'no',
                 'need_driver_pickup' => $_POST['need_driver_pickup'] ?? 'no',
                 'pickup_time' => isset($_POST['need_driver_pickup']) && $_POST['need_driver_pickup'] == 'yes' ? $_POST['pickup_time'] : null,
                 'status' => ($action == 'draft') ? 'draft' : 'pending',
@@ -1517,6 +1518,7 @@ class Interstate extends Controller
                     <div class="details">
                         <h4>Trip Details:</h4>
                         <p><strong>Staff:</strong> ' . htmlspecialchars($request->staff_email) . ' / ' . htmlspecialchars($request->staff_phone) . '</p>
+                        <p><strong>TAF Filled &amp; Approved:</strong> ' . ($request->taf_approved == 'yes' ? '<span style="color:#28a745;font-weight:bold;">Yes</span>' : '<span style="color:#dc3545;font-weight:bold;">No</span>') . '</p>
                         <p><strong>Purpose:</strong> ' . nl2br(htmlspecialchars($request->purpose)) . '</p>
                         <p><strong>From:</strong> ' . htmlspecialchars($request->vehicle_location_state_name ?? 'N/A') . '</p>
                         <p><strong>To:</strong> ' . htmlspecialchars($request->arrival_state_name ?? 'N/A') . ' - ' . htmlspecialchars($request->destination_city) . '</p>

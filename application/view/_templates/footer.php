@@ -1,8 +1,8 @@
 
     <!-- backlink to repo on GitHub, and affiliate link to Rackspace if you want to support the project -->
-    <div class="footer">
+    <!-- <div class="footer">
         Find <a href="https://github.com/panique/mini">MINI on GitHub</a>.
-    </div>
+    </div> -->
 
     <!-- jQuery, loaded in the recommended protocol-less way -->
     <!-- more http://www.paulirish.com/2010/the-protocol-relative-url/ -->

@@ -64,3 +64,6 @@ CREATE TABLE `country_default_approvers` (
   CONSTRAINT `fk_cda_country` FOREIGN KEY (`country_id`) REFERENCES `country` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- TAF approval confirmation on interstate trip request
+ALTER TABLE `interstate_request`
+  ADD COLUMN `taf_approved` ENUM('yes','no') NOT NULL DEFAULT 'no' AFTER `staff_phone`;
